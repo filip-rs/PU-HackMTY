@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .config import settings
+from .config import MXN_PER_1K_COMPLETION_TOKENS, MXN_PER_1K_PROMPT_TOKENS, settings
 from .contract import SCHEME_TYPES, validate_case_file
 from .data import Dataset, load
 from .detectors import run_all
@@ -570,7 +570,7 @@ def _llm_loop(
             # generous completion budget: reasoning models burn tokens on
             # reasoning_content first, and a truncated record_finding call loses
             # scheme_type/rule and gets rejected by the guard
-            reply = llm.chat(messages, tools=all_tools, tool_choice="auto", max_tokens=8192)
+            reply = llm.chat(messages, tools=all_tools, tool_choice="auto", max_tokens=8192, role="investigator")
             if first:
                 rec.emit(
                     "hypothesis",
@@ -711,6 +711,62 @@ def _make_llm() -> LLM | None:
     return LLM(s)
 
 
+def _compute_run_metadata(use_llm: bool, llm: Any, wall: float) -> dict:
+    """#89: the run-metadata block written to the case file and the step log.
+
+    ``prompt_tokens`` / ``completion_tokens`` / ``cost_by_role`` count only
+    *uncached* calls (a cached call cost 0), so ``mxn_cost`` is exactly the token
+    counts times the reference rate (config, .env-overridable) divided by 1000.
+    ``--no-llm`` reports zero calls and zero cost; ``deterministic`` is true in
+    no-LLM mode, and in LLM mode only when every call came from the cache.
+    """
+    if use_llm and llm is not None and hasattr(llm, "stats"):
+        stats = llm.stats()
+        llm_calls = stats["calls"]
+        cached_calls = stats["cached_calls"]
+        prompt_tokens = stats["prompt_tokens"]
+        completion_tokens = stats["completion_tokens"]
+        by_role = stats["by_role"]
+    else:
+        llm_calls = 0
+        cached_calls = 0
+        prompt_tokens = 0
+        completion_tokens = 0
+        by_role = {}
+
+    s = settings()
+    p_rate = s.mxn_per_1k_prompt if s is not None else MXN_PER_1K_PROMPT_TOKENS
+    c_rate = s.mxn_per_1k_completion if s is not None else MXN_PER_1K_COMPLETION_TOKENS
+
+    def _cost(p: int, c: int) -> float:
+        return (p * p_rate + c * c_rate) / 1000.0
+
+    mxn_cost = _cost(prompt_tokens, completion_tokens)
+    cost_by_role = {role: _cost(r["prompt_tokens"], r["completion_tokens"]) for role, r in by_role.items()}
+
+    if not use_llm:
+        deterministic = True
+        note = ""
+    elif llm_calls > 0 and cached_calls == llm_calls:
+        deterministic = True
+        note = "replay from cache is deterministic"
+    else:
+        deterministic = False
+        note = ""
+
+    return {
+        "llm_calls": llm_calls,
+        "cached_calls": cached_calls,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "mxn_cost": mxn_cost,
+        "cost_by_role": cost_by_role,
+        "wall_clock_seconds": wall,
+        "deterministic": deterministic,
+        "deterministic_note": note,
+    }
+
+
 def run(
     dataset_dir: str | Path,
     *,
@@ -753,13 +809,15 @@ def run(
 
         findings.sort(key=lambda f: (f["scheme_type"], f["accused"]))
         not_pursued = _build_not_pursued(dossiers, ds, findings, dropped)
-        case = {"findings": findings, "not_pursued": not_pursued}
+        case: dict = {"findings": findings, "not_pursued": not_pursued}
 
         errors = validate_case_file(case, ds)
         if errors:
             raise RuntimeError("case file failed the contract: " + "; ".join(errors))
 
         wall = round(time.time() - t0, 3)
+        run_metadata = _compute_run_metadata(use_llm, effective_llm, wall)
+        case["run_metadata"] = run_metadata
         rec.emit(
             "run_end",
             "",
@@ -767,6 +825,12 @@ def run(
                 "n_findings": len(findings),
                 "n_not_pursued": len(not_pursued),
                 "wall_s": wall,
+                "llm_calls": run_metadata["llm_calls"],
+                "cached_calls": run_metadata["cached_calls"],
+                "prompt_tokens": run_metadata["prompt_tokens"],
+                "completion_tokens": run_metadata["completion_tokens"],
+                "mxn_cost": run_metadata["mxn_cost"],
+                "cost_by_role": run_metadata["cost_by_role"],
                 "case_file": str(out),
                 "report": "",
             },

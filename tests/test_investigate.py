@@ -98,10 +98,71 @@ def test_run_returns_same_dict_and_identical_files(tmp_path, dataset_dir):
     l2 = tmp_path / "b.jsonl"
     case1 = run(str(dataset_dir), out=str(o1), log=str(l1), max_leads=1, llm=FakeLLM(list(replies)))
     case2 = run(str(dataset_dir), out=str(o2), log=str(l2), max_leads=1, llm=FakeLLM(list(replies)))
-    assert case1 == case2
-    assert json.loads(Path(o1).read_text()) == case1
-    assert json.loads(Path(o2).read_text()) == case2
-    assert Path(o1).read_bytes() == Path(o2).read_bytes()
+
+    # The findings/not_pursued must be reproducible; run_metadata carries a live
+    # wall_clock_seconds so it is compared separately (#89).
+    canonical = {k: v for k, v in case1.items() if k != "run_metadata"}
+    assert canonical == {k: v for k, v in case2.items() if k != "run_metadata"}
+    assert canonical == {k: v for k, v in json.loads(Path(o1).read_text()).items() if k != "run_metadata"}
+    assert canonical == {k: v for k, v in json.loads(Path(o2).read_text()).items() if k != "run_metadata"}
+
+    for case, path in ((case1, o1), (case2, o2)):
+        assert "run_metadata" in case
+        assert case["run_metadata"]["wall_clock_seconds"] >= 0
+        assert case["run_metadata"]["llm_calls"] == 1
+        assert case["run_metadata"]["mxn_cost"] == 0.0
+        assert json.dumps(case["findings"], sort_keys=True) == json.dumps(
+            json.loads(Path(path).read_text())["findings"], sort_keys=True
+        )
+
+
+def test_run_metadata_counts_llm_and_cost(tmp_path, dataset_dir):
+    """#89: run_metadata records LLM calls, tokens and cost; --no-llm writes zeros."""
+    from agent.config import MXN_PER_1K_COMPLETION_TOKENS, MXN_PER_1K_PROMPT_TOKENS
+    from agent.investigate import run
+
+    log = tmp_path / "run.jsonl"
+    replies = [
+        Reply(
+            text="Checking the supplier.",
+            tool_calls=[ToolCall(id="c1", name="get_supplier", args={"supplier_id": "S00004"})],
+            cached=False,
+            usage={"prompt_tokens": 100, "completion_tokens": 50},
+            raw={},
+        ),
+        Reply(
+            text="nothing to accuse",
+            tool_calls=[ToolCall(id="c2", name="drop_lead", args={"entity_id": "S00004", "reason": "test drop"})],
+            cached=False,
+            usage={"prompt_tokens": 200, "completion_tokens": 80},
+            raw={},
+        ),
+    ]
+    case = run(str(dataset_dir), out=None, log=str(log), max_leads=1, llm=FakeLLM(list(replies)))
+    m = case["run_metadata"]
+    assert m["llm_calls"] == 2
+    assert m["prompt_tokens"] == 300
+    assert m["completion_tokens"] == 130
+    expected = (300 * MXN_PER_1K_PROMPT_TOKENS + 130 * MXN_PER_1K_COMPLETION_TOKENS) / 1000.0
+    assert m["mxn_cost"] == pytest.approx(expected, abs=1e-6)
+    assert m["cost_by_role"]["investigator"] == pytest.approx(expected, abs=1e-6)
+    assert m["deterministic"] is False
+    assert "run_metadata" in case
+
+    run_end = [e for e in _read_log(log) if e["kind"] == "run_end"][0]
+    assert run_end["payload"]["llm_calls"] == 2
+    assert run_end["payload"]["mxn_cost"] == pytest.approx(expected, abs=1e-6)
+
+    case2 = run(str(dataset_dir), out=None, log=None, no_llm=True)
+    m2 = case2["run_metadata"]
+    assert m2["llm_calls"] == 0
+    assert m2["cached_calls"] == 0
+    assert m2["prompt_tokens"] == 0
+    assert m2["completion_tokens"] == 0
+    assert m2["mxn_cost"] == 0.0
+    assert m2["cost_by_role"] == {}
+    assert m2["deterministic"] is True
+    assert m2["deterministic_note"] == ""
 
 
 def test_no_llm_scores(dataset_dir, decoy_ids):

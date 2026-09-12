@@ -154,12 +154,23 @@ A `drop_lead` decision:
 | `n_findings` | int | how many findings the case file holds |
 | `n_not_pursued` | int | how many leads were not pursued |
 | `wall_s` | number | wall-clock seconds for the whole run |
+| `llm_calls` | int | number of LLM `chat` calls (#89) |
+| `cached_calls` | int | how many of those came from the disk cache |
+| `prompt_tokens` | int | prompt tokens from *uncached* calls (cached cost 0) |
+| `completion_tokens` | int | completion tokens from *uncached* calls (cached cost 0) |
+| `mxn_cost` | number | MXN cost at the reference hosted rate (0 for `--no-llm`) |
+| `cost_by_role` | object | per-role MXN cost, e.g. `{"investigator": ...}` |
 | `case_file` | string | where the case file was written (`""` when `--out` was omitted) |
 | `report` | string | where the report was written (`""` when no report) |
 
 ```json
-{"ts": "2026-09-12T21:51:15+02:00", "entity_id": "", "step": 34, "kind": "run_end", "payload": {"n_findings": 4, "n_not_pursued": 14, "wall_s": 0.178, "case_file": "/tmp/sample_case.json", "report": ""}}
+{"ts": "2026-09-12T21:51:15+02:00", "entity_id": "", "step": 34, "kind": "run_end", "payload": {"n_findings": 4, "n_not_pursued": 14, "wall_s": 0.178, "llm_calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "mxn_cost": 0.0, "cost_by_role": {}, "case_file": "/tmp/sample_case.json", "report": ""}}
 ```
+
+The case file itself gains a top-level `run_metadata` block with the same
+counters plus `wall_clock_seconds`, `deterministic` (true in no-LLM mode, and in
+LLM mode only when every call came from the cache) and `deterministic_note`
+("replay from cache is deterministic" for a fully-cached LLM run).
 
 ## Ordering guarantees
 
