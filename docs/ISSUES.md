@@ -5,7 +5,7 @@
 | #1 | OPEN | `needs-human` | Repo skeleton + CI |  |
 | #2 | CLOSED | `cc` | Loader module agent/data.py | #33 (merged) |
 | #3 | CLOSED | `cc` | Case-file contract test | #34 (merged) |
-| #4 | OPEN | `hermes-ok` | detect_efos(ds) | #47 (open) |
+| #4 | CLOSED | `hermes-ok` | detect_efos(ds) | #47 (merged) |
 | #5 | CLOSED | `hermes-ok` | detect_no_receipt(ds) | #35 (merged) |
 | #6 | CLOSED | `hermes-ok` | detect_duplicate_payments(ds) | #36 (merged) |
 | #7 | CLOSED | `hermes-ok` | detect_employee_address_match(ds) | #37 (merged) |
@@ -13,27 +13,36 @@
 | #9 | CLOSED | `hermes-ok` | detect_round_trip(ds) | #39 (merged) |
 | #10 | CLOSED | `hermes-ok` | detect_fast_pay_no_deliverable(ds) | #40 (merged) |
 | #11 | CLOSED | `hermes-ok` | detect_new_vendor_round_amounts(ds) | #41 (merged) |
-| #12 | OPEN | `cc` | Tool layer agent/tools.py |  |
-| #13 | OPEN | `cc` | Investigation loop agent/investigate.py |  |
-| #14 | OPEN | `cc` | Evidence guard agent/guard.py + rule catalog agent/rules.py |  |
+| #12 | CLOSED | `cc` | Tool layer agent/tools.py | #53 (merged) |
+| #13 | CLOSED | `cc` | Investigation loop agent/investigate.py | #56 (merged) |
+| #14 | CLOSED | `cc` | Evidence guard agent/guard.py + rule catalog agent/rules.py | #55 (merged) |
 | #15 | CLOSED | `hermes-ok` | requirements.txt + Makefile | #19 (merged) |
 | #16 | CLOSED | `hermes-ok` | ruff config + fix lint in data_estate/ | #20 (merged) |
-| #17 | OPEN | `hermes-ok` | --n flag for generate.py (batch of seeds) |  |
+| #17 | CLOSED | `hermes-ok` | --n flag for generate.py (batch of seeds) | #60 (merged) |
 | #18 | CLOSED | `hermes-ok` | tests/test_generate_batch.py: 5 seeds validate | #32 (merged) |
-| #22 | OPEN | `cc` | LLM client agent/llm.py + agent/config.py (tool calling, cache, offline fake, --tools check) |  |
-| #23 | OPEN | `cc` | Human-readable case file agent/report.py (money trail + tax exposure) |  |
-| #24 | OPEN | `codex` | generate.py crashes on ~1.5% of seeds (13, 34, 74): decoy D3 needs a logistics supplier |  |
-| #25 | OPEN | `codex` | Batch evaluation scripts/eval_batch.py: recall, penalty, evidence over N unseen seeds |  |
-| #26 | OPEN | `cc` | Demo live-trace UI demo/trace_ui.py + demo/index.html (reads the step log, replay mode) |  |
-| #27 | OPEN | `cc` | One-command demo run scripts/demo_run.py + docs/INJECT.md for judges |  |
-| #28 | OPEN | `hermes-ok` | tests/test_no_hidden_access.py: mechanically enforce AGENTS.md rule 2 |  |
-| #29 | OPEN | `hermes-ok` | tests/test_detectors_batch.py: every planted entity hit on fresh seeds, no decoy on strong detectors |  |
-| #30 | OPEN | `hermes-ok` | scripts/sync_issues.py: regenerate docs/ISSUES.md from GitHub |  |
+| #22 | CLOSED | `cc` | LLM client agent/llm.py + agent/config.py (tool calling, cache, offline fake, --tools check) | #54 (merged) |
+| #23 | CLOSED | `cc` | Human-readable case file agent/report.py (money trail + tax exposure) | #57 (merged) |
+| #24 | CLOSED | `codex` | generate.py crashes on ~1.5% of seeds (13, 34, 74): decoy D3 needs a logistics supplier | #59 (merged) |
+| #25 | CLOSED | `codex` | Batch evaluation scripts/eval_batch.py: recall, penalty, evidence over N unseen seeds | #58 (merged) |
+| #26 | OPEN | `needs-human` | Demo live-trace UI demo/trace_ui.py + demo/index.html (reads the step log, replay mode) |  |
+| #27 | OPEN | `hermes-ok` | One-command demo run scripts/demo_run.py + docs/INJECT.md for judges (serves the API for the frontend) |  |
+| #28 | CLOSED | `hermes-ok` | tests/test_no_hidden_access.py: mechanically enforce AGENTS.md rule 2 | #61 (merged) |
+| #29 | CLOSED | `hermes-ok` | tests/test_detectors_batch.py: every planted entity hit on fresh seeds, no decoy on strong detectors | #51 (merged) |
+| #30 | CLOSED | `hermes-ok` | scripts/sync_issues.py: regenerate docs/ISSUES.md from GitHub | #49 (merged) |
 | #31 | OPEN | `needs-human` | Demo rehearsal pack: script, surprise-question answers, cannot-do slide, venue checks |  |
 | #42 | CLOSED | `hermes-ok` | detect_kickback_outflow(ds): supplier statement outflows to an employee's personal CLABE | #46 (merged) |
-| #43 | OPEN | `hermes-ok` | Decoy-surfacing detectors: detect_name_twin_69b, detect_shared_supplier_address, detect_cash_payments |  |
-| #44 | OPEN | `hermes-ok` | Lead aggregation and ranking agent/leads.py (docket per entity, scheme_hint, CLI) |  |
-| #45 | OPEN | `hermes-ok` | ruff check in CI + fix the 3 existing lint errors | #48 (open) |
+| #43 | CLOSED | `hermes-ok` | Decoy-surfacing detectors: detect_name_twin_69b, detect_shared_supplier_address, detect_cash_payments | #50 (merged) |
+| #44 | CLOSED | `hermes-ok` | Lead aggregation and ranking agent/leads.py (docket per entity, scheme_hint, CLI) | #52 (merged) |
+| #45 | CLOSED | `hermes-ok` | ruff check in CI + fix the 3 existing lint errors | #48 (merged) |
+| #65 | OPEN | `hermes-ok` | agent/guard.py: ledger entry IDs in evidence are set aside, not a rejection |  |
+| #66 | OPEN | `hermes-ok` | agent/investigate.py: feed guard rejections back to the model, then fall back to the deterministic finding |  |
+| #67 | OPEN | `hermes-ok` | Streamed step log + docs/STEP_LOG.md contract + agent/steplog.py validator + agent/README.md refresh |  |
+| #68 | OPEN | `hermes-ok` | api/server.py: stdlib HTTP + SSE server so the frontend can start runs and stream the step log |  |
+| #69 | OPEN | `hermes-ok` | agent/clear.py: replace canned drop reasons with checks that cite records (or admit they cannot) |  |
+| #70 | OPEN | `hermes-ok` | agent/investigate.py: escalate unverified weak leads to the model; 'other' findings become a suspicious tier in not_pursued |  |
+| #71 | OPEN | `hermes-ok` | agent/investigate.py: investigate units concurrently (--workers) to keep a cold LLM run under 30 s |  |
+| #72 | OPEN | `cc` | LLM-mode batch evaluation on 10 unseen seeds: docs/eval tables + LEARNINGS entry |  |
+| #73 | OPEN | `cc` | docs: PLAN.md refresh, HERMES_BRIEF.md for auto-merge, demo/sample_trace.jsonl, issue queue cleanup |  |
 
 ---
 
@@ -146,7 +155,7 @@ Contract reference: docstring of `data_estate/score.py`. Do not change that cont
 
 **Depends on #2** (`all_record_ids`, `all_entity_ids`).
 
-## #4 detect_efos(ds)  `hermes-ok`  OPEN
+## #4 detect_efos(ds)  `hermes-ok`  CLOSED
 
 ## Goal
 The cheapest, strongest lead: a supplier whose RFC is on SAT's Article 69-B list (EFOS). Match on **RFC**, never on name: one decoy in every dataset has the same *name* as a listed company but a different RFC.
@@ -481,7 +490,7 @@ Classic EFOS smell: a recently onboarded supplier whose invoices are suspiciousl
 
 **Depends on #2.** If #2 is still open, skip this issue.
 
-## #12 Tool layer agent/tools.py  `cc`  OPEN
+## #12 Tool layer agent/tools.py  `cc`  CLOSED
 
 ## Goal
 The only way the LLM touches data. Every tool returns JSON-serialisable dicts whose rows carry record IDs, so anything the model cites can be re-checked by the guard (#14). No tool ever produces a number the model could not point back to a row.
@@ -525,7 +534,7 @@ Shapes:
 
 **Depends on #2.**
 
-## #13 Investigation loop agent/investigate.py  `cc`  OPEN
+## #13 Investigation loop agent/investigate.py  `cc`  CLOSED
 
 ## Goal
 The agent: detectors produce leads, the LLM forms a hypothesis per lead and calls tools to prove or drop it, the guard (#14) keeps invented evidence out, and the result is a case file `data_estate/score.py` can score. The step log is what the demo shows on screen.
@@ -572,7 +581,7 @@ Findings keep the model's `narrative` (a short string) through the guard (#14 ke
 
 **Depends on #12, #14 and #22**, and on detectors #4–#11 as they land (the loop must run with whatever subset is merged).
 
-## #14 Evidence guard agent/guard.py + rule catalog agent/rules.py  `cc`  OPEN
+## #14 Evidence guard agent/guard.py + rule catalog agent/rules.py  `cc`  CLOSED
 
 ## Goal
 "The LLM proposes, deterministic code proves." Nothing enters the case file unless every cited ID exists, the rule is one we recognise, and the peso amount is consistent with the records. This is the answer to "how do you know it did not hallucinate?".
@@ -681,7 +690,7 @@ No new test file. Existing `tests/test_frozen_dataset.py`, `tests/test_estate.py
 - [ ] `python -m pytest -q` green, validate green, regeneration diff empty (`SAME`)
 - [ ] PR body shows the `SAME` line from the determinism check
 
-## #17 --n flag for generate.py (batch of seeds)  `hermes-ok`  OPEN
+## #17 --n flag for generate.py (batch of seeds)  `hermes-ok`  CLOSED
 
 ## Goal
 Batch evaluation over many seeds ("mean recall ≥ 0.8, penalty 0 on every seed" in `docs/PLAN.md`) needs many datasets in one command.
@@ -716,7 +725,7 @@ Catch generator bugs that only appear on some seeds before a judge does. `tests/
 - [ ] Test present and green today; `python -m pytest -q` green
 - [ ] `BATCH_SEED=anything python -m pytest -q tests/test_generate_batch.py` also green
 
-## #22 LLM client agent/llm.py + agent/config.py (tool calling, cache, offline fake, --tools check)  `cc`  OPEN
+## #22 LLM client agent/llm.py + agent/config.py (tool calling, cache, offline fake, --tools check)  `cc`  CLOSED
 
 ## Goal
 One place that talks to the model, so the investigation loop (#13) is only about leads and evidence. Every call goes to the OpenAI-compatible endpoint in `.env` (AGENTS.md rule 8), is cached on disk so a demo re-run costs zero network, and can be swapped for a scripted fake in tests. It also delivers the one check that matters most for the demo infrastructure: does the endpoint return **structured tool calls**? vLLM needs `--enable-auto-tool-choice --tool-call-parser <name>`; without it the model prints `<tool_call>` text and the loop cannot work. We must find that out from the venue, not on stage.
@@ -808,7 +817,7 @@ user message `"Use the add tool to add 2 and 3."`, `tool_choice: "auto"`, `tempe
 
 No dependency on #2. #13 depends on this issue.
 
-## #23 Human-readable case file agent/report.py (money trail + tax exposure)  `cc`  OPEN
+## #23 Human-readable case file agent/report.py (money trail + tax exposure)  `cc`  CLOSED
 
 ## Goal
 The Clarity and Feasibility criteria: "is the case file easy to follow, with a clear money trail?" and "could a finance team use this?". `case_file.json` (#13) is for the scorer. This module turns it into a document a CFO or an auditor can read: one section per finding with the rule broken, the peso amount, the **tax exposure in pesos**, the **money trail as a dated table built from the cited records**, and a section listing every lead that was cleared and why. Deterministic, no LLM: every number is recomputed from the dataset rows the finding cites, so the document can be defended line by line.
@@ -872,7 +881,7 @@ Plain-words scheme names: `efos_fake_supplier` → "Fake supplier on the SAT 69-
 
 **Depends on #2 and #3.** Used by the demo run (#27) and linked from the trace UI (#26).
 
-## #24 generate.py crashes on ~1.5% of seeds (13, 34, 74): decoy D3 needs a logistics supplier  `codex`  OPEN
+## #24 generate.py crashes on ~1.5% of seeds (13, 34, 74): decoy D3 needs a logistics supplier  `codex`  CLOSED
 
 ## Problem
 `python -m data_estate.generate --seed 13 --out /tmp/c13` raises
@@ -902,7 +911,7 @@ IndexError: Cannot choose from an empty sequence
 
 Related: #18 (daily random seeds) would have caught this eventually; this fixes it now. No dependencies. Small diff: one file plus two tests.
 
-## #25 Batch evaluation scripts/eval_batch.py: recall, penalty, evidence over N unseen seeds  `codex`  OPEN
+## #25 Batch evaluation scripts/eval_batch.py: recall, penalty, evidence over N unseen seeds  `codex`  CLOSED
 
 ## Goal
 The "on records it has never seen" number for the pitch, and the go/no-go gate before the feature freeze (docs/PLAN.md hours 12–24: **mean recall ≥ 0.8 and judgment penalty 0 on every seed**). One command generates N fresh datasets, runs the agent on each, scores every run, and prints a table plus a markdown file for the slides. It is also the honest answer to "how sure are you?" during the surprise question.
@@ -936,7 +945,7 @@ Design the module so the CLI and the test share one function: `run_batch(seed_pl
 
 **Depends on #13** (`agent.investigate.run`) and on #24 (so no seed crashes). Calls `Generator` directly; does not need #17.
 
-## #26 Demo live-trace UI demo/trace_ui.py + demo/index.html (reads the step log, replay mode)  `cc`  OPEN
+## #26 Demo live-trace UI demo/trace_ui.py + demo/index.html (reads the step log, replay mode)  `needs-human`  OPEN
 
 ## Goal
 The Clarity criterion on stage: while the agent runs, the judges see leads appear, the hypothesis, every tool call, the money moving hop by hop, and the decision (accuse with rule and amount, or drop with a reason). The UI is a **viewer of the step log** written by `agent.investigate` (#13). It never calls the LLM or the detectors itself; it only reads the JSONL file and the dataset masters for names. It must also **replay** an old log at a chosen speed so we can rehearse, and fall back, without the cluster.
@@ -983,45 +992,47 @@ Generate it, do not hand-write it: `python -m agent.investigate data_estate/out/
 
 **Depends on #13** (log format) and **#2** (names). #23's report is optional: `/report` just returns 404 without it.
 
-## #27 One-command demo run scripts/demo_run.py + docs/INJECT.md for judges  `cc`  OPEN
+## #27 One-command demo run scripts/demo_run.py + docs/INJECT.md for judges (serves the API for the frontend)  `hermes-ok`  OPEN
 
 ## Goal
-On stage a judge picks a seed and a scheme, we type one command, the trace UI shows the run, and the case file and the score appear. The judges' brief says they "hide a fresh scheme in the data", so they also need a one-page guide to injecting one: through our generator (seed plus scheme subset) or by editing CSVs by hand. This issue delivers the command, the page, and the two fallback paths for when the cluster is unreachable.
+On stage a judge picks a seed and a scheme, we type one command, the frontend shows the run, and the case file and the score appear. The judges' brief says they "hide a fresh scheme in the data", so they also need a one-page guide to injecting one: through our generator (seed plus scheme subset) or by editing CSVs by hand. This issue delivers the command, the page, and the fallback paths for when the cluster is unreachable.
+
+The frontend is built outside this repo against the API server (#68); this script does not render anything itself. `--serve` starts the API server so the frontend can attach.
+
+Depends on #68 (API server) and #23 (report, closed).
 
 ## Spec: `scripts/demo_run.py`
-`python scripts/demo_run.py --seed 7 [--schemes efos,roundtrip|all|clean] [--dataset <existing dir>] [--no-llm] [--max-leads 12] [--serve] [--replay-from runs/<file>.jsonl] [--runs runs]`
-1. Refuse `--seed 42` unless `--dataset data_estate/out/company_42` is passed explicitly (never regenerate the frozen set).
-2. Generate unless `--dataset` is given: `Generator(seed).build(schemes)` → `data_estate/out/live/company_<seed>/` (gitignored), then `data_estate.validate.check` must return `[]`.
+`python scripts/demo_run.py --seed 7 [--schemes efos,roundtrip|all|clean] [--dataset <existing dir>] [--no-llm] [--max-leads 12] [--workers 4] [--serve] [--port 8765] [--runs runs]`
+1. Refuse `--seed 42` unless `--dataset data_estate/out/company_42` is passed explicitly (never regenerate the frozen set). Exit 2 with a message naming the frozen dataset.
+2. Generate unless `--dataset` is given: `Generator(seed).build(schemes)` → `data_estate/out/live/company_<seed>/` (gitignored), then `data_estate.validate.check` must return `[]` (exit 1 with the errors otherwise). Map `all`/`clean`/comma list exactly like `scripts/eval_batch.py::plan`.
 3. Print the judge sheet: company name, counts of suppliers, customers, invoices and bank transactions, and **nothing about what was planted**.
-4. `agent.investigate.run(dataset, out=<runs>/<ts>_case.json, log=<runs>/<ts>.jsonl, no_llm=..., max_leads=...)`, with the log also available at `<runs>/latest.jsonl` while it is being written (write to `latest.jsonl` and copy to the timestamped name at the end, or the reverse; the UI is pointed at `latest.jsonl`).
-5. Render the report (#23) to `<runs>/<ts>_case.md` and print the path.
+4. Run `agent.investigate.run(dataset, out=<runs>/<ts>_case.json, log=<runs>/<ts>.jsonl, no_llm=..., max_leads=..., workers=... if the parameter exists)`. Also maintain `<runs>/latest.jsonl` as a copy of the finished log (for `--replay-from` and for anyone tailing a fixed path).
+5. Render the report (`agent.report.render`) to `<runs>/<ts>_case.md` and print the path.
 6. If `<dataset>/hidden/ground_truth.json` exists, run `data_estate.score.score` and print the JSON under the heading `SCORE (uses hidden ground truth; show the judges only when they ask)`.
-7. `--serve`: start `demo.trace_ui` (#26's server) on port 8765 in a background thread **before** step 4 so the judges watch live; keep serving after the run until Ctrl-C.
-8. `--replay-from <log>`: skip steps 2–6 and serve that log with `--replay 0.3`. This is the no-cluster fallback; `--no-llm` (deterministic findings, real trace) is the second fallback.
+7. `--serve`: start `api.server.serve(host, port, runs, out_root)` in a background thread BEFORE step 4 and submit the run through the registry (so the frontend sees it under `/runs`); keep serving after the run until Ctrl-C.
+8. `--replay-from <log>`: skip steps 2–6; copy that log line by line into `<runs>/replay_<ts>.jsonl` with a 0.3 s delay in a background thread and register it as a run so `/runs/<id>/events` streams it. This is the no-cluster fallback; `--no-llm` (deterministic findings, real trace shape) is the second fallback.
 9. Print the wall time of every stage. Exit non-zero on a validate or contract failure.
 
 ## Spec: `docs/INJECT.md` (one page, written for the judges, no internal jargon)
 - What the agent sees: the CSVs, one line each; what it never sees (`hidden/`).
 - Way 1, the generator: `python scripts/demo_run.py --seed <any number> --schemes <efos,kickback,roundtrip,duplicate or clean> --serve`, with one sentence per scheme name describing what gets planted.
 - Way 2, edit a generated dataset by hand, three worked recipes naming the exact columns: (a) put an existing supplier's `rfc` into `efos_69b.csv` with `situacion = Definitivo`; (b) add a second `out` row to `bank_transactions.csv` with an existing `invoice_uuid`, a new `txn_id` and a different `counterparty_clabe`; (c) set a supplier's `street`/`city` to an employee's `home_street`/`home_city` and add `counterparty_bank.csv` rows from that supplier's `clabe` to the employee's `personal_clabe`. Then `python scripts/demo_run.py --dataset <dir> --serve`. Say that hand-edited datasets have no ground truth, so no score is printed; the trace and the case file are the output.
-- What the agent cannot do, said before they ask: prove a service was really delivered without contracts; see counterparties' banks beyond `counterparty_bank.csv`; the 69-B list is only as fresh as its download; synthetic data is not a real company; four scheme types, anything else lands in `not_pursued` or `other` with what was noticed.
+- What the agent cannot do, said before they ask: prove a service was really delivered without contracts; see counterparties' banks beyond `counterparty_bank.csv`; the 69-B list is only as fresh as its download; synthetic data is not a real company; four scheme types, anything else lands in `not_pursued` as "suspicious, unproven" with what was noticed.
 
-Add `demo` to the Makefile (#15): `make demo SEED=7 SCHEMES=all` runs the script with `--serve`.
+Add `demo` to the Makefile: `make demo SEED=7 SCHEMES=all` runs the script with `--serve`.
 
 ## Test: `tests/test_demo_run.py`
-- `pytest.importorskip("agent.investigate")` at the top so the file skips until #13 lands.
-- `subprocess.run([sys.executable, "scripts/demo_run.py", "--seed", "101", "--schemes", "all", "--no-llm", "--runs", str(tmp_path)], cwd=repo_root)`: exit 0; the case JSON, the log and the markdown exist in `tmp_path`; stdout contains `"results_recall"`; nothing was created under `runs/` in the repo.
-- `--seed 42` without `--dataset` → non-zero exit and a message naming the frozen dataset.
+- `subprocess.run([sys.executable, "scripts/demo_run.py", "--seed", "101", "--schemes", "all", "--no-llm", "--runs", str(tmp_path)], cwd=repo_root)`: exit 0; the case JSON, the log, `latest.jsonl` and the markdown exist in `tmp_path`; stdout contains `"results_recall"`; nothing was created under `runs/` in the repo.
+- `--seed 42` without `--dataset` → exit 2 and a message naming the frozen dataset.
+- `--replay-from demo/sample_trace.jsonl --runs tmp --port 0`: hard to test end to end from a subprocess; instead unit-test the replay helper (`replay_log(src, dst, delay)`): after 1 s with delay 0.01 the destination has every line of the source.
 
 ## Definition of done
-- [ ] `python scripts/demo_run.py --seed 7 --schemes all --serve` runs end to end with the UI live
+- [ ] `python scripts/demo_run.py --seed 7 --schemes all --serve` runs end to end with the frontend attached to port 8765
 - [ ] `--no-llm` and `--replay-from` both work with the cluster unreachable (test with `LLM_BASE_URL=http://127.0.0.1:9` in the environment)
 - [ ] `docs/INJECT.md` tried by a teammate who did not build the agent: they inject a scheme from the page alone
 - [ ] `python -m pytest -q` green
 
-**Depends on #13, #23, #26** and on #24 (no seed may crash on stage).
-
-## #28 tests/test_no_hidden_access.py: mechanically enforce AGENTS.md rule 2  `hermes-ok`  OPEN
+## #28 tests/test_no_hidden_access.py: mechanically enforce AGENTS.md rule 2  `hermes-ok`  CLOSED
 
 ## Goal
 AGENTS.md rule 2 says `agent/` must never read `hidden/`. Today that is checked by eye. Make it a test that fails the PR. Two traps it must catch: (1) a string path to `hidden/ground_truth.json`; (2) the sneaky one: `from data_estate.validate import load` or `from data_estate.score import score`. Both of those read `hidden/ground_truth.json` internally, so an agent module importing them would see the ground truth without ever spelling "hidden".
@@ -1046,7 +1057,7 @@ Add one line to AGENTS.md rule 2: "`tests/test_no_hidden_access.py` enforces thi
 
 No dependencies for the static part. Small diff: one test file plus one line in AGENTS.md.
 
-## #29 tests/test_detectors_batch.py: every planted entity hit on fresh seeds, no decoy on strong detectors  `hermes-ok`  OPEN
+## #29 tests/test_detectors_batch.py: every planted entity hit on fresh seeds, no decoy on strong detectors  `hermes-ok`  CLOSED
 
 ## Goal
 Every detector test so far runs against company_42 only. The judges score "records it has never seen". This test generates fresh datasets during the test run and checks that the scheme-defining detectors find every planted entity and nothing honest, and that every lead from every registered detector is well-formed. It catches threshold bugs that only show up on other seeds: the round-trip window and the fast-pay window were both tuned on one seed (see LEARNINGS.md), and seed 105 below has a return leg that a 10-day window misses.
@@ -1081,7 +1092,7 @@ Conventions: the fixtures in `tests/conftest.py` are for company_42; this file b
 
 **Depends on #2, #4, #6, #7, #8, #9.** If any of them is still open, skip this issue.
 
-## #30 scripts/sync_issues.py: regenerate docs/ISSUES.md from GitHub  `hermes-ok`  OPEN
+## #30 scripts/sync_issues.py: regenerate docs/ISSUES.md from GitHub  `hermes-ok`  CLOSED
 
 ## Goal
 `docs/ISSUES.md` is the offline mirror of the issue queue (README: "GitHub is the source of truth"). It was written by hand and is already stale: no state column, no PR links, and newer issues are missing. One script regenerates it, so the mirror is trustworthy for anyone reading the repo without network and the open/closed picture is visible in one file.
@@ -1181,7 +1192,7 @@ The **proof** of the kickback scheme, not just its tell. `detect_employee_addres
 
 **Depends on #2** (merged). Independent of #7; the loop combines both.
 
-## #43 Decoy-surfacing detectors: detect_name_twin_69b, detect_shared_supplier_address, detect_cash_payments  `hermes-ok`  OPEN
+## #43 Decoy-surfacing detectors: detect_name_twin_69b, detect_shared_supplier_address, detect_cash_payments  `hermes-ok`  CLOSED
 
 ## Goal
 Three of the five decoys never appear in any lead today. `run_all(ds)` on company_42 surfaces the new-vendor decoy (`S00009`, via round amounts) and the law-firm decoy (`S00036`, via fast-pay / no-receipt), but nothing points at the **name-twin** (`S00007`), the **shared-address** supplier (`S00026`) or the **cash-payments** supplier (`S00011`). The loop (#13) can only clear what it sees: its definition of done ("every decoy appears in `not_pursued` with a reason") and the demo line "why did you not accuse X?" both need every decoy to arrive as a lead carrying the facts that clear it. These three detectors are deliberately **weak signals**: they exist so the agent can show, on record, that it looked and why it walked away. Each lead carries the exonerating facts as plain data fields; the detector never decides.
@@ -1240,7 +1251,7 @@ Decoy 5: cash invoices (`forma_pago == "01"`). Deductible only up to MXN 2,000 e
 
 **Depends on #2** (merged). Does not depend on #4.
 
-## #44 Lead aggregation and ranking agent/leads.py (docket per entity, scheme_hint, CLI)  `hermes-ok`  OPEN
+## #44 Lead aggregation and ranking agent/leads.py (docket per entity, scheme_hint, CLI)  `hermes-ok`  CLOSED
 
 ## Goal
 Step 1 of the investigation loop (#13) says "group leads by `entity_id`; rank". That grouping is the agent's *docket*: which entities get investigated, in what order, and with what starting hypothesis. It is pure pandas, fully testable against ground truth, and it is also the deterministic core of the `--no-llm` fallback (which must pass the same scores on stage if the cluster is down). Splitting it out of #13 the way #22 split out the client: #13 then only orchestrates.
@@ -1316,7 +1327,7 @@ With every detector merged, `run_all` yields 130 leads over 19 entities (plus th
 
 **Depends on #2, #4, #42, #43.** If any is still open, skip this issue.
 
-## #45 ruff check in CI + fix the 3 existing lint errors  `hermes-ok`  OPEN
+## #45 ruff check in CI + fix the 3 existing lint errors  `hermes-ok`  CLOSED
 
 ## Goal
 #16 configured ruff in `pyproject.toml` (`E4, E7, E9, F, I`) but nothing runs it: it is not in `.github/workflows/ci.yml`, not in `requirements.txt`, and `ruff check .` on current `master` already reports 3 errors (2× `I001` unsorted imports, 1× `F841` unused variable). Lint that is not enforced drifts. Make CI run it and fix what it finds.
@@ -1330,3 +1341,305 @@ With every detector merged, `run_all` yields 130 leads over 19 entities (plus th
 ## Definition of done
 - [ ] `ruff check .` exits 0 on the branch; CI runs it and is green
 - [ ] `python -m pytest -q` green
+
+## #65 agent/guard.py: ledger entry IDs in evidence are set aside, not a rejection  `hermes-ok`  OPEN
+
+## Goal
+In LLM mode the model calls `query_ledger` a lot (35 of the 206 tool calls in the logged runs under `runs/`) and then cites the ledger `entry_id`s it saw (`GL00652`, `GL02894`, `GL03014`, ...) as evidence in `record_finding`. The case-file contract only accepts invoice UUIDs, `TX*`, `CP*` and `GR*` (`Dataset.all_record_ids()` in `agent/data.py`), so `validate_case_file` reports `findings[0].evidence: GL03014 not in dataset` and `agent/guard.py` rejects the whole finding. The lead is then dropped and recall on company_42 falls from 4/4 to 3/4 (see `runs/20260912T175005Z.jsonl`, entity S00017: the duplicate-payment finding was correct in every other respect).
+
+Ledger rows are legitimate context (the duplicate payment is booked straight to an expense account, bypassing AP), they are just not evidence IDs under the contract. The guard should keep the finding, set the ledger refs aside, and keep them visible in the narrative.
+
+Do not change `agent/contract.py`, `agent/data.py`, `data_estate/score.py` or `tests/test_case_file_contract.py` (AGENTS.md rules 3 and 5). This is a guard-only change.
+
+## Spec (`agent/guard.py`)
+1. New helper `_split_ledger_refs(evidence: list[str], ds: Dataset) -> tuple[list[str], list[str]]`: an ID is a ledger ref when it is in `set(ds.ledger["entry_id"])`. Returns `(evidence_without_ledger, ledger_ids)`, both in first-occurrence order, both deduped.
+2. In `guard()`, right after the existing dedupe and BEFORE step 1 (the contract check): split the evidence. Every later check (contract, "belongs to accused", evidence kinds, invoice required, amount) runs on `evidence_without_ledger`.
+3. If `evidence_without_ledger` is empty and `ledger_ids` is not: reject with the single reason `"evidence: only ledger entries were cited (GL...); cite invoice, TX, CP or GR records"` (list at most 3 IDs), and return early. Keep this reason first so the model (and the trace) sees the specific cause rather than the contract's generic "must be a non-empty list".
+4. If the finding is otherwise accepted and `ledger_ids` is non-empty: `clean["narrative"]` gets a trailing sentence `" Ledger entries consulted: GL00652, GL02894."` (comma-separated, all of them, in order). Append to the existing narrative (separated by a space) or create the narrative from that sentence alone when there was none. Apply the `NARRATIVE_MAX` truncation AFTER appending.
+5. IDs that are neither in `all_record_ids()` nor ledger entry IDs remain a rejection exactly as today (`test_fabricated_evidence_rejected` must not change).
+6. `guard()` keeps its signature `(clean_finding | None, reasons)`; nothing in `agent/investigate.py` needs to change for this issue. Update the module docstring: one line saying ledger IDs are set aside, not rejected.
+
+## Tests (add to `tests/test_guard.py`; use the existing `ds` fixture and `_ref_finding`)
+Facts to rely on: `GL00652` exists in `data_estate/out/company_42/ledger.csv`; ledger IDs look like `GL00001`.
+- `test_ledger_ids_moved_to_narrative`: take `_ref_finding(ds, "duplicate_invoice_payment")`, copy it, append `"GL00652"` to `evidence` → `guard` returns a clean finding with `reasons == []`; `clean["evidence"]` equals the reference evidence list (no `GL00652`); `"GL00652" in clean["narrative"]`; `clean["narrative"]` contains `"Ledger entries consulted"`.
+- `test_only_ledger_ids_rejected`: same reference finding with `evidence = ["GL00652"]` → `clean is None` and `reasons[0]` contains `"only ledger entries"`.
+- `test_ledger_ids_deduped_in_narrative`: `evidence = [<first reference evidence id>, "GL00652", "GL00652"]` → accepted; the narrative mentions `GL00652` exactly once.
+- `test_ledger_plus_fabricated_still_rejected`: `evidence = reference + ["GL00652", "TX99999"]` → rejected; reasons mention `TX99999`.
+- `test_narrative_truncated_after_ledger_append`: narrative of 1000 `"x"` plus one ledger id → `len(clean["narrative"]) == NARRATIVE_MAX`.
+
+## Definition of done
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+- [ ] `python -m agent.guard data_estate/out/company_42 /tmp/f.json` where `f.json` is the reference duplicate-payment finding plus `"GL00652"` prints `ACCEPTED` and the narrative shows the ledger id
+- [ ] Every existing guard test passes unchanged
+
+## #66 agent/investigate.py: feed guard rejections back to the model, then fall back to the deterministic finding  `hermes-ok`  OPEN
+
+## Goal
+Today a `record_finding` that the guard rejects ends the lead: `_llm_loop` in `agent/investigate.py` sets `decision_made = True` and the entity lands in `not_pursued` with the guard's reasons as the drop reason. Across the seven logged LLM runs on company_42 (`runs/*.jsonl`) that turned a 4/4 dataset into 1/4, 1/4, 3/4, 3/4, 3/4, 4/4, 4/4, while `--no-llm` scores 4/4 every time (`test_no_llm_scores`). The guard's reasons are precise (`amount_mxn 1044000.00 is not within 25% of the recomputed 2070600.00`, `evidence GL03014 not in dataset`), which is exactly what the model needs to fix its call. And for a unit that carries a scheme signature, the deterministic builder `_build_finding` (the `--no-llm` path) already produces a guard-verified finding; when the model cannot, the loop should use that finding and say so in the log, not drop the lead.
+
+This is "the LLM proposes, deterministic code proves" taken to its conclusion: the trace shows the model's attempt, the guard's verdict, and where the final finding came from.
+
+Depends on #65 (ledger IDs in evidence no longer cause a rejection).
+
+## Spec (`agent/investigate.py`, `_llm_loop` only; `_fallback_loop` and `--no-llm` output must stay byte-identical)
+1. **Feedback on rejection.** When a `record_finding` tool call is rejected by the guard: emit the `guard` entry as today (`accepted: false`, `reasons`), then instead of ending the lead append a tool message for that tool call id: `tool_message(tc, {"accepted": False, "reasons": reasons, "hint": "Fix the finding using these reasons and call record_finding again, or call drop_lead."})` and continue the while loop. Do NOT `break` out of the for loop over the reply's tool calls on a rejection: any data-tool calls in the same reply still execute and get their tool messages (every tool call in an assistant message must receive a tool message, or the next request is invalid).
+2. **Retry budget.** Module constant `MAX_GUARD_RETRIES = 2` (so at most 3 `record_finding` attempts per unit). Count rejections per unit; when the count exceeds the budget, stop calling the model for this unit and go to step 3. `max_steps` still bounds the total number of model calls per unit as today.
+3. **Deterministic fallback for signature units.** Whenever the LLM path ends WITHOUT an accepted finding for a unit whose `scheme_hint` is non-empty and in `SCHEME_TO_RULE` (causes: retries exhausted, `max_steps` reached, the model called `drop_lead`, the model replied with no tool call), call `_build_finding(unit, ds, scheme_type, rule_id)`:
+   - if it returns a finding: emit `decision` with payload `{"action": "record_finding", "finding": <payload>, "source": "deterministic_fallback", "llm_outcome": <"rejected"|"dropped"|"no_terminal"|"max_steps">, "llm_reason": <the model's drop reason, or the last guard reasons joined with "; ", or "">}`, then `guard` with `{"accepted": true, "reasons": [], "finding": <payload>, "source": "deterministic_fallback"}`; append to `findings`; do not add the entity to `dropped`.
+   - if it returns `None`: drop as today with reason `"the aggregated scheme finding was rejected by the evidence guard"`, and keep the model's reason in the decision payload as `llm_reason`.
+   The model's explicit `drop_lead` on a signature unit is therefore overridden, but its reason is preserved in the log and the `decision` entry for the drop is still emitted before the fallback decision, so the trace shows both.
+4. **Provenance on the happy path.** Every `decision` with `action: "record_finding"` and every `guard` entry now carries `"source": "llm"` (or `"deterministic_fallback"`) and `"attempt": <1-based count of record_finding calls for this unit>`. `_fallback_loop` entries carry `"source": "deterministic"` and `"attempt": 1`. These are additive payload fields (readers ignore unknown fields).
+5. Units without a signature behave as today (dropped by rule without a model call). #70 changes that later.
+6. Update the module docstring (the two execution paths paragraph) to describe the retry and the fallback.
+
+## Tests (`tests/test_investigate.py`; `FakeLLM`, no network; reuse the S00004 kickback finding from `test_fakellm_drives_one_lead`: accused `["S00004", "E00002"]`, rule `"R2"`, amount `575360.0`, evidence `["BFEEB533-ACF5-9149-B1C9-D0DCA38CC35F", "EAC97D37-B587-8D33-1D5B-D8B04027B283"]`)
+- `test_guard_rejection_is_fed_back_and_retry_succeeds`: replies = [record_finding with `amount_mxn: 1.0` (rejected on amount), the correct record_finding]. Assert the log kinds are exactly `run_start, lead, hypothesis, decision, guard, decision, guard, run_end`; first guard `accepted is False`; second guard `accepted is True`, `source == "llm"`, `attempt == 2`; `FakeLLM.calls[1]["messages"][-1]["role"] == "tool"` and its content contains `"not within 25%"`; one kickback finding with amount `575360.0`.
+- `test_retries_exhausted_falls_back_to_deterministic`: three rejected record_findings (amount `1.0` each) → three rejected guards, then a `decision` with `source == "deterministic_fallback"`, `llm_outcome == "rejected"`, followed by an accepted `guard`; `FakeLLM.calls` has length 3; the case has the kickback finding with amount `575360.0`; `"S00004"` not in `not_pursued`.
+- `test_model_drop_on_signature_unit_is_overridden_with_reason_kept`: one reply `drop_lead("S00004", "not enough")` → log has a `decision` `drop_lead` with reason `"not enough"` followed by a `decision` `record_finding` with `source == "deterministic_fallback"`, `llm_outcome == "dropped"`, `llm_reason == "not enough"`; the finding is in the case.
+- `test_no_terminal_reply_falls_back`: one reply with `text="I am not sure"` and no tool calls → `llm_outcome == "no_terminal"`, finding present.
+- `test_rejection_does_not_skip_sibling_tool_calls`: one reply with two tool calls in this order: `record_finding` (amount `1.0`) and `get_supplier({"supplier_id": "S00004"})`; second reply the correct finding. Assert `FakeLLM.calls[1]["messages"]` contains exactly two `role: "tool"` messages after the first assistant message, one per tool call id.
+- `test_no_llm_scores` and `test_run_returns_same_dict_and_identical_files` unchanged and green.
+- `test_llm_end_to_end_with_real_endpoint`: tighten `results_recall >= 0.75` to `== 1.0` (it skips without `.env`; with the fallback it is guaranteed on company_42).
+
+## Definition of done
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+- [ ] `python -m agent.investigate data_estate/out/company_42 --no-llm --out /tmp/a.json` produces the same case file as before this change
+- [ ] A human with `.env` runs `python -m agent.investigate data_estate/out/company_42 --out /tmp/c.json` and `python -m data_estate.score data_estate/out/company_42 /tmp/c.json` shows `results_recall: 1.0` and `judgment_penalty: 0` (Hermes: note this in the PR body as "not run, no .env")
+
+## #67 Streamed step log + docs/STEP_LOG.md contract + agent/steplog.py validator + agent/README.md refresh  `hermes-ok`  OPEN
+
+## Goal
+A teammate is building the frontend separately, outside this repo, against the JSONL step log that `agent.investigate` writes. Today the only spec is the docstring of `agent/investigate.py` plus the superseded UI issue #26, `agent/README.md` still says "planned modules ... detectors.py", and, the real blocker, **the log is written only at the end of the run** (`_write_log` runs after `run_end`), so nothing can tail it live. This issue makes the log a stream, writes the contract down once, and adds a test that fails when the writer drifts from it.
+
+## Deliverables
+### 1. Streamed log (`agent/investigate.py`)
+- `_Log.__init__(self, path: str | None)`: when `path` is given, create the parent directory, open the file with `open(path, "w", encoding="utf-8")` and keep the handle. `emit()` appends the entry to `self.entries` AND, when a handle is open, writes `json.dumps(entry, ensure_ascii=False, default=str) + "\n"` and calls `flush()` immediately. Add `close()`; `run()` calls it in a `finally` so a crash mid-run still leaves a readable file (without a `run_end` line, which is how a reader detects an aborted run).
+- `run()` computes `log_path` before constructing `_Log(log_path)`; remove `_write_log` (or keep it as a no-op alias if something imports it; nothing in the repo does).
+- Output must be byte-identical to today's files for the same run.
+
+### 2. `agent/steplog.py` (the contract as code)
+- `KINDS = ("run_start", "lead", "hypothesis", "tool_call", "tool_result", "decision", "guard", "run_end")` and `REQUIRED_PAYLOAD: dict[str, dict[str, type | tuple[type, ...]]]` listing, per kind, the payload fields that must be present and their JSON types. Take the fields from the writer:
+  - `run_start`: `dataset: str, n_leads: int, mode: str ("llm"|"no-llm"), model: str`
+  - `lead`: `entity_id: str, name: str, rank: int, detectors: list, n_detectors: int, total_mxn: number, leads: list`
+  - `hypothesis`: `text: str, scheme_type: str`
+  - `tool_call`: `name: str, args: dict`
+  - `tool_result`: `name: str, n_rows: int, summary: str, ids: list, rows: list`
+  - `decision`: `action: str ("record_finding"|"drop_lead")`; when `record_finding`: `finding: dict` with `scheme_type, accused, rule, amount_mxn, evidence`; when `drop_lead`: `reason: str`
+  - `guard`: `accepted: bool, reasons: list, finding: dict`
+  - `run_end`: `n_findings: int, n_not_pursued: int, wall_s: number, case_file: str, report: str`
+  Extra payload fields are allowed (readers ignore unknown fields; #66 adds `source` and `attempt`).
+- `parse_lines(text: str) -> tuple[list[dict], bool]`: parse a JSONL string, tolerating a partial last line (returns `(entries, complete)` where `complete` is False when the last line was cut off).
+- `validate_entries(entries: list[dict]) -> list[str]`: one human-readable error per violation: envelope keys exactly `ts, entity_id, step, kind, payload`; `ts` parses with `datetime.fromisoformat`; `step` strictly increasing by 1 from 1; unknown kind is NOT an error (forward compatibility) but a known kind with a missing/mistyped required field is; first entry is `run_start`; if a `run_end` exists it is the last entry; every `guard` is immediately preceded by a `decision` with `action == "record_finding"` for the same `entity_id`; every `tool_result` is immediately preceded by a `tool_call` with the same `name` and `entity_id`; every `lead` entity is later the subject of at least one `decision`.
+- CLI: `python -m agent.steplog runs/<file>.jsonl` prints `OK <n entries>` or the errors and exits 1.
+
+### 3. `docs/STEP_LOG.md` (written for the frontend developer; no internal jargon without a definition)
+- What the file is, where it lands (`--log` path, default `runs/<UTC ts>.jsonl`), that it is appended and flushed per event, and how to tail it (partial last line = writer mid-write, retry; `run_end` = finished; no `run_end` and no new lines for 60 s = aborted).
+- The envelope, then one subsection per kind: the payload table (field, type, meaning) and **one real example line copied from `demo/sample_trace.jsonl`** (a real LLM run on company_42, committed by #73; if it is missing when you work, generate `python -m agent.investigate data_estate/out/company_42 --no-llm --log /tmp/t.jsonl` and use that, noting `tool_call`/`tool_result` only appear in LLM mode).
+- Ordering guarantees per entity: `lead` → optional `hypothesis` → zero or more `tool_call`/`tool_result` pairs → `decision` (+ `guard` after `record_finding`, possibly several decision/guard pairs after #66) ; entities may interleave once runs are concurrent (#71), so group by `entity_id`, never assume contiguity.
+- ID conventions: entities `S…` supplier, `C…` customer, `E…` employee, `""` for run-level events; records: 36-char UUID = invoice, `TX` = company bank transaction, `CP` = counterparty statement row, `GR` = goods receipt, `GL` = ledger entry (context only, never evidence).
+- Where the names come from (`agent.data.load(...).suppliers/customers/employees`) and that the API server (#68) exposes them.
+- The compatibility rule: writers add fields, never rename or remove; readers ignore unknown kinds and fields.
+
+### 4. `agent/README.md` rewrite
+Module table (`data`, `detectors/*`, `leads`, `tools`, `llm`, `config`, `rules`, `guard`, `contract`, `steplog`, `investigate`, `report`) with one line each; the CLI commands (`investigate`, `leads`, `guard`, `contract`, `report`, `steplog`); the two execution paths (`--no-llm` deterministic, LLM loop with guard); where outputs go; links to `docs/STEP_LOG.md` and the case-file contract in `data_estate/score.py`.
+
+## Tests: `tests/test_step_log_contract.py`
+- `test_no_llm_log_validates(tmp_path, dataset_dir)`: run `agent.investigate.run(dataset_dir, out=None, log=tmp, no_llm=True)`; `validate_entries(parse_lines(...)[0]) == []`.
+- `test_fakellm_log_validates`: the two-reply FakeLLM script from `tests/test_investigate.py::test_fakellm_drives_one_lead` → `[]` errors, and the kinds include `tool_call` and `tool_result`.
+- `test_log_is_streamed(tmp_path, dataset_dir)`: FakeLLM whose second reply is a callable that, when invoked, reads the log file and asserts it already contains a `lead` and a `hypothesis` line (the run has not ended yet).
+- `test_partial_last_line_tolerated`: a valid log text with the last line cut in half → `parse_lines` returns all complete entries and `complete is False`.
+- `test_validator_catches_drift`: hand-built entries with (a) a `guard` not preceded by a `record_finding` decision, (b) `step` skipping a number, (c) a `lead` without a required field → three distinct errors; an entry with an unknown kind → no error.
+- `test_sample_trace_validates`: if `demo/sample_trace.jsonl` exists, it validates; otherwise skip.
+- `test_steplog_cli(tmp_path)`: `python -m agent.steplog <valid file>` exits 0 and prints `OK`.
+
+## Definition of done
+- [ ] `tail -f runs/latest.jsonl` in one terminal shows lines appearing while `python -m agent.investigate ... --log runs/latest.jsonl --no-llm` runs in another (it is fast; use the FakeLLM test for the real proof)
+- [ ] `docs/STEP_LOG.md` has an example line for every kind, `agent/README.md` no longer says "planned"
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+
+## #68 api/server.py: stdlib HTTP + SSE server so the frontend can start runs and stream the step log  `hermes-ok`  OPEN
+
+## Goal
+The frontend (built separately, not in this repo) needs three things from the backend: start an investigation on a chosen dataset, receive the step-log events live, and fetch the finished case file, report and, when hidden truth exists, the score. There is no HTTP API today, only the CLI. Build one with the standard library (`http.server.ThreadingHTTPServer`, `json`, `threading`, `argparse`, `urllib.parse`), no FastAPI/uvicorn (AGENTS.md rule 4).
+
+It lives OUTSIDE `agent/`, in a new package `api/`, because the score endpoint imports `data_estate.score`, which reads `hidden/`. AGENTS.md rule 2 and `tests/test_no_hidden_access.py` cover `agent/` only; `api/` may import `data_estate` the way `scripts/eval_batch.py` does. `api/` never copies anything from `hidden/` into a response except through the explicit `/score` endpoint.
+
+Depends on #67 (the log must be streamed at emit time for `/events` to work).
+
+## Spec
+`python -m api.server [--host 127.0.0.1] [--port 8765] [--runs runs] [--out-root data_estate/out/live]`
+
+Every response carries `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Headers: Content-Type`, `Access-Control-Allow-Methods: GET, POST, OPTIONS`; any `OPTIONS` request returns 204 with those headers. Errors are JSON `{"error": "<message>"}` with 400/404/409/500. All JSON is UTF-8, `ensure_ascii=False`.
+
+| Method & path | Body / query | Returns |
+|---|---|---|
+| `GET /health` | | `{"ok": true, "llm_configured": <agent.config.settings() is not None>, "model": "<LLM_MODEL or ''>"}` — never the key or URL |
+| `GET /datasets` | | list of `{"name", "path", "has_truth": <hidden/ground_truth.json exists>, "n_suppliers", "n_customers", "n_invoices", "n_bank_txns"}` for every directory under `data_estate/out/` and `<out-root>` that contains `company.json`, sorted by name |
+| `POST /datasets` | `{"seed": int, "schemes": "all" \| "clean" \| "efos,kickback,roundtrip,duplicate" (any subset)}` | 201 with that dataset's entry. Generates with `data_estate.generate.Generator(seed).build(list)` + `write_estate` into `<out-root>/company_<seed>/`, then `data_estate.validate.check` must return `[]` (else 500 with the errors). Seed 42 → 409 `company_42 is frozen`. Existing directory → regenerate (deterministic). Map `"all"` to the four names, `"clean"` to `[]` like `scripts/eval_batch.py::plan` |
+| `GET /datasets/{name}/entities` | | `{"S00004": {"name", "kind": "supplier", "category"}, "C00005": {"name", "kind": "customer"}, "E00002": {"name", "kind": "employee", "role"}, ..., "COMPANY": {"name", "clabe"}}` from `agent.data.load` |
+| `POST /runs` | `{"dataset": "company_42" \| "<path>", "no_llm": false, "max_leads": 12, "max_steps": 12}` | 202 `{"run_id", "dataset", "log", "case", "report"}`. Runs `agent.investigate.run(dataset, out=<runs>/<run_id>_case.json, log=<runs>/<run_id>.jsonl, ...)` in a background thread, then `agent.report.render` to `<runs>/<run_id>_case.md`. `run_id` = `<UTC %Y%m%dT%H%M%SZ>-<4 hex>`. One run at a time: while one is `running`, respond 409 `{"error": "a run is in progress", "run_id": "<that id>"}` |
+| `GET /runs` | | newest-first list of `{"run_id", "dataset", "status": "running" \| "done" \| "failed", "started", "finished", "n_findings", "error"}`; includes runs from earlier server processes found in `<runs>/` (`*_case.json` exists → `done`; log without case → `failed`) |
+| `GET /runs/{id}` | | one entry as above, 404 if unknown |
+| `GET /runs/{id}/events` | `?after=<step>`; also honours the `Last-Event-ID` header | `text/event-stream`. For every log line with `step > after`: `id: <step>\nevent: <kind>\ndata: <the JSON line>\n\n`. While the run is `running`, tail the file (poll every 250 ms), send `: ping\n\n` every 15 s of silence. After the `run_end` line, or when status becomes `failed`, send `event: end\ndata: {"status": "<status>"}\n\n` and close. Parse lines with `agent.steplog.parse_lines` (partial last line tolerated) |
+| `GET /runs/{id}/log` | | JSON array of every entry so far |
+| `GET /runs/{id}/case` | | the case file (404 until `done`) |
+| `GET /runs/{id}/report` | | the markdown as `text/markdown; charset=utf-8` (404 until `done`) |
+| `GET /runs/{id}/score` | | `data_estate.score.score(dataset, case)` (404 when the dataset has no `hidden/ground_truth.json` or the run is not `done`). Document in the module docstring and README: for the team and for judges who ask; the frontend must not show it by default |
+
+Implementation notes: a `RunRegistry` guarded by a `threading.Lock`; the investigation thread is a `threading.Thread(daemon=True)`; exceptions inside the thread set `status = "failed"` and `error = repr(exc)` and are also printed to stderr. Expose module-level `run_investigation = agent.investigate.run` and `render_report = agent.report.render` so tests can monkeypatch them. `serve(host, port, runs, out_root) -> ThreadingHTTPServer` returns the bound server (port 0 allowed) so tests can run it in a thread and read `server.server_address`. `main()` calls `serve_forever()`; Ctrl-C shuts down cleanly.
+
+## Tests: `tests/test_api_server.py` (stdlib `urllib.request`, `threading`, `socket`; no `requests`)
+- Fixture: server on `127.0.0.1:0` in a thread with `runs=tmp_path/"runs"`, `out_root=tmp_path/"out"`; shut down at teardown.
+- `/health` → `ok true`, key `llm_configured` present, no `api_key`/`base_url` keys.
+- `/datasets` contains `company_42` with `has_truth true` and `n_invoices > 0`; no value anywhere in the response mentions `ground_truth`.
+- `POST /runs {"dataset": "company_42", "no_llm": true}` → 202; poll `/runs/{id}` until `done` (timeout 30 s); `/case` has 4 findings; `/score` has `results_recall == 1.0` and `judgment_penalty == 0`; `/report` body starts with `#`; `/log` kinds start with `run_start` and end with `run_end`; `/events?after=0` read with a 10 s socket timeout yields ≥ 34 `data:` lines and a final `event: end`; `Last-Event-ID: 30` yields only steps > 30.
+- 409 on concurrent runs: monkeypatch `api.server.run_investigation` with a function that sleeps 1 s then calls the real one; start a run; a second `POST /runs` within that second → 409.
+- `POST /datasets {"seed": 42}` → 409; `{"seed": 9001, "schemes": "clean"}` → 201, `tmp_path/out/company_9001/company.json` exists, `has_truth true`; `GET /datasets/company_9001/entities` has a `COMPANY` key.
+- `/datasets/company_42/entities` maps `S00030` to a dict with `name` and `kind == "supplier"` and `E00002` to `kind == "employee"`.
+- CORS: `Access-Control-Allow-Origin: *` on `/health`; `OPTIONS /runs` → 204.
+- Unknown run id → 404 JSON.
+
+## Definition of done
+- [ ] `python -m api.server` in one terminal; `curl -s -X POST localhost:8765/runs -d '{"dataset":"company_42","no_llm":true}'` then `curl -N localhost:8765/runs/<id>/events` prints events and ends with `event: end`
+- [ ] README.md "Everyday commands" gets the server line and a pointer to `docs/STEP_LOG.md`; a short `api/README.md` lists the endpoints (copy the table above)
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+
+## #69 agent/clear.py: replace canned drop reasons with checks that cite records (or admit they cannot)  `hermes-ok`  OPEN
+
+## Goal
+`agent/investigate.py` drops every lead that has no scheme signature using `_DET_CLAUSES`: one fixed sentence per detector, written without looking at the data, e.g. `"the shared address is a commercial building, not an employee's home"`. On company_42 those sentences happen to be true. On a judge's hand-edited dataset they can be false (a supplier registered at an employee's home with no kickback outflow would still be "cleared" as a commercial building), and when a judge asks "how do you know?" the honest answer today is "it is hard-coded". The Judgment criterion is exactly that question, and `not_pursued` reasons are read aloud on stage.
+
+Replace each clause with a check over the `Dataset` that returns a reason WITH record IDs when the innocent explanation actually holds, and `None` when it cannot be confirmed. A `None` becomes an honest `"unverified: ..."` reason (and, in #70, an escalation to the model).
+
+## Spec: new module `agent/clear.py`
+`clear_reason(detector: str, entity_id: str, leads: list[dict], ds: Dataset) -> str | None` dispatches on the detector name to one function each (`_clear_<detector without "detect_">`). Pure pandas over the Dataset; never reads `hidden/`; never raises (unknown detector → `None`). Each reason is one sentence a non-engineer can read, ends with record IDs, and lists at most 3 IDs followed by `"and N more"` when there are more. Amounts formatted `MXN 1,234.56`. Use `agent.tools.Tools(ds).check_69b(rfc)` and `agent.rules._active_69b_supplier_ids(ds)` rather than re-implementing 69-B logic.
+
+Checks, with the facts on company_42 the tests rely on:
+
+| Detector | Innocent iff | Reason shape (example entity on company_42) |
+|---|---|---|
+| `detect_new_vendor_round_amounts` | every `recibida` invoice of the supplier has ≥ 1 goods receipt AND the RFC is not live on 69-B | S00009: `"new vendor with round amounts, but all 5 invoices have warehouse-signed goods receipts (GR..., GR..., GR... and 2 more) and RFC JMK241214132 is not on the 69-B list"` |
+| `detect_name_twin_69b` | `check_69b(rfc)["listed"]` is False | S00007: names the supplier's RFC `SZC9707063JK` and every twin's RFC and `situacion` from `name_matches` (here `TAO890114RLQ`); adds the receipt count when receipts exist (S00007 has 8/8) |
+| `detect_shared_supplier_address` | the supplier's `street`+`city` matches no employee's `home_street`+`home_city` AND `counterparty_bank` shows no `out` row from the supplier's `clabe` to any employee `personal_clabe` | S00026: `"shares its address (Av. Garza Sada 337) with S00024 (Grupo del Norte SAPI de CV); it matches no employee's home and its bank statement shows no outflow to an employee account; 6 of 6 invoices have goods receipts (GR..., GR..., GR... and 3 more)"` |
+| `detect_no_receipt` and `detect_fast_pay_no_deliverable` | the supplier's `category` is one that never carries goods receipts by construction (`servicios`, `logistica`, `renta_util`) AND the RFC is not live on 69-B AND the address matches no employee home AND no `counterparty_bank` outflow to an employee CLABE | S00036: `"one legal-services invoice (809BD813-4F13-823B-51F4-A72499503858, MXN 440,800.00) describing 'Honorarios — litigio mercantil exp. 412/2025', approved by E00001; services carry no goods receipt; RFC BNW120625NY2 is not on the 69-B list"`. Include the `descripcion` of the largest invoice and its `approved_by`. For a goods category (`consumibles`, `materia_prima`, `refacciones`) with missing receipts → `None` |
+| `detect_cash_payments` | every `forma_pago == "01"` invoice has `total <= 2000` AND has a goods receipt | S00011: `"3 cash invoices, the largest MXN 1,821.72, all under the MXN 2,000 deductibility cap (LISR Art. 27-III), goods received (GR..., GR..., GR...)"` |
+| strong detectors (`detect_efos`, `detect_employee_address_match`, `detect_kickback_outflow`, `detect_round_trip`, `detect_duplicate_payments`, `detect_clabe_not_on_master`) firing on a unit WITHOUT a complete signature | never cleared by rule | return `None` |
+
+Integration in `agent/investigate.py`:
+- `_drop_reason(dossier, ds)` calls `clear_reason` for each detector on the dossier. If every call returns a string: join them with `"; "` (dedupe identical sentences). If any returns `None`: the reason is `"unverified: <comma-separated detectors that returned None> fired and the innocent explanation could not be confirmed from the records; needs a human or a deeper investigation"`, and the `decision` payload gets `"verified": false` (`true` otherwise). Delete `_DET_CLAUSES`.
+- `_build_not_pursued` unchanged apart from calling the new `_drop_reason`.
+- Both `--no-llm` and LLM paths use it (the LLM path only for units without a signature, as today).
+
+## Tests: `tests/test_clear.py` (fixtures `ds`, `decoy_ids`, `truth` from `tests/conftest.py`)
+- One test per row of the table on the named entity: `test_clear_new_vendor_s00009` (contains `"5 invoices"`, three IDs that exist in `ds.goods_receipts["receipt_id"]`, `"JMK241214132"`); `test_clear_name_twin_s00007` (`"SZC9707063JK"` and `"TAO890114RLQ"`); `test_clear_shared_address_s00026` (`"S00024"`, `"Garza Sada 337"`); `test_clear_law_firm_s00036` (`"809BD813-4F13-823B-51F4-A72499503858"`, `"412/2025"`, `"E00001"`); `test_clear_cash_s00011` (`"1,821.72"`, `"2,000"`, ≥ 1 `GR` id).
+- `test_strong_detector_never_cleared`: `clear_reason("detect_efos", "S00030", [], ds) is None` and the same for `detect_duplicate_payments` on `S00017`.
+- `test_goods_category_without_receipt_is_none`: build an in-memory copy of `ds` (`dataclasses.replace` with copied DataFrames), drop every goods receipt of S00009, then `clear_reason("detect_no_receipt", "S00009", [], ds2) is None` and `clear_reason("detect_new_vendor_round_amounts", ...) is None`.
+- `test_shared_address_at_employee_home_is_none`: copy `ds`, set S00026's `street`/`city` to E00002's `home_street`/`home_city` → `None`.
+- `test_every_decoy_reason_cites_a_record`: `agent.investigate.run(company_42, out=None, log=None, no_llm=True)`; for each `decoy_ids` entry in `not_pursued` the reason contains at least one ID from `ds.all_record_ids()` or a supplier RFC from `ds.suppliers["rfc"]`, and does not start with `"unverified:"`.
+- `test_every_not_pursued_reason_is_grounded_or_unverified`: for every `not_pursued` entry on company_42 (`--no-llm`): reason either starts with `"unverified:"` or contains a record ID / RFC / other entity ID.
+- `test_unknown_detector_is_none`.
+- `tests/test_investigate.py::test_no_llm_scores` must stay green (recall 1.0, penalty 0, every decoy in `not_pursued`).
+
+## Definition of done
+- [ ] `python -m agent.investigate data_estate/out/company_42 --no-llm --out /tmp/a.json` and every `not_pursued` reason names a record; `_DET_CLAUSES` is gone
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+- [ ] A LEARNINGS.md entry (3 lines: tried / happened / changed) about replacing canned reasons with checks
+
+## #70 agent/investigate.py: escalate unverified weak leads to the model; 'other' findings become a suspicious tier in not_pursued  `hermes-ok`  OPEN
+
+## Goal
+After #69, a weak lead (no scheme signature) whose innocent explanation cannot be confirmed from the records is marked `unverified`. Today such leads are dropped without the model ever looking at them. Two things should happen instead:
+
+1. In LLM mode the model investigates them with the tools. This is also our only path to *notice* a scheme we did not plan for, which is what the judges do on stage ("hide a fresh scheme in the data").
+2. Because the guard's R5 / `other` rule has no amount recomputation, an `other` finding must never become an accusation. It becomes a **"suspicious, unproven"** entry in `not_pursued` with the evidence the model gathered. That is the tiered output from `docs/STRATEGY.md` §3 (Proven / Suspicious / Cleared) expressed inside the frozen case-file contract. The scorer never penalises `not_pursued`, so a decoy that the model over-reads still costs nothing.
+
+Depends on #66 (retry/fallback loop) and #69 (`clear_reason`).
+
+## Spec (`agent/investigate.py`)
+1. **Escalation.** In `_llm_loop`, for a unit with `scheme_hint == ""`: compute the reasons via `_drop_reason`. If it is verified (no detector returned `None`), drop as today with `decision` payload `{"action": "drop_lead", "reason", "verified": true, "escalated": false}`. Otherwise run the model investigation for the unit (same messages as a signature unit) with one extra line at the end of the user prompt:
+   `"No scheme signature matched. The automatic clearing check could not confirm an innocent explanation for: <detectors that returned None>. Investigate with the tools. Call record_finding only if one of R1-R4 is fully evidenced with record IDs and the full amount; call record_finding with scheme_type 'other' and rule 'R5' if something is wrong but it is none of the four; otherwise call drop_lead with what you checked."`
+   The `decision` entries for that unit carry `"escalated": true`.
+2. **Escalation cap.** New CLI flag `--max-escalations` (default 4), threaded through `run(..., max_escalations=4)`. Units are already ordered signature-first; escalate the first N unverified units in rank order; the rest are dropped with the `"unverified: ..."` reason and `"escalated": false`.
+3. **`other` is parked, never accused.** When the guard accepts a finding whose `scheme_type == "other"` (from any unit): do NOT append it to `findings`. Emit the `decision` (`record_finding`) and the accepted `guard` as usual, then emit `decision` with `{"action": "park_lead", "tier": "suspicious", "entity_id": <each accused id>, "reason": <see below>}` once per accused entity, and store the reason in a new `parked: dict[str, str]`. Reason text: `"suspicious, unproven: <narrative or 'the model flagged this entity'>. Evidence: <evidence ids, max 5, then 'and N more'>"`. `_build_not_pursued` uses `parked` first, then `dropped`, then `_drop_reason`.
+4. The deterministic fallback of #66 applies only to units with a signature; escalated units never get a fallback finding. A rejected `other` finding after the retry budget → drop with the `"unverified: ..."` reason plus `" (model: <its last narrative or guard reasons>)"`.
+5. `--no-llm`: unverified weak leads keep the `"unverified: ..."` reason, `"escalated": false`.
+6. Add `park_lead` to `agent/steplog.py` (`REQUIRED_PAYLOAD["decision"]` gains the `park_lead` action with `tier: str, reason: str`) and to `docs/STEP_LOG.md`.
+7. Docstring: describe the three outcomes for a weak lead (cleared with records / escalated / unverified).
+
+## Tests (`tests/test_investigate.py`, FakeLLM, no network)
+Helper for these tests: monkeypatch `agent.investigate._build_units` to wrap the real function and keep only the units whose `entity_id` is in a given set (so the FakeLLM script only has to cover one unit), and monkeypatch `agent.clear.clear_reason` to return `None` for `detect_shared_supplier_address`.
+- `test_unverified_weak_lead_is_escalated`: units = {S00026}; replies: `get_supplier({"supplier_id": "S00026"})`, then `drop_lead("S00026", "freight company, carta porte on every invoice")`. Assert the log has a `tool_call` `get_supplier` for S00026, the `decision` is `drop_lead` with that reason and `escalated is True`, `not_pursued` has S00026 with that reason, `findings == []`.
+- `test_verified_weak_lead_not_escalated`: units = {S00009} with the real `clear_reason` → `FakeLLM.calls == []`, decision `verified is True`, `escalated is False`.
+- `test_other_finding_is_parked_not_accused`: units = {S00026}; reply: `record_finding` with `scheme_type "other"`, `rule "R5"`, `accused ["S00026"]`, `amount_mxn 1.0`, `evidence [<one recibida invoice uuid of S00026 taken from ds.invoices>]`, narrative `"odd freight pattern"`. Assert `findings == []`; `not_pursued` has S00026 with reason starting `"suspicious, unproven: odd freight pattern"` and containing that uuid; the log has `decision` `park_lead` with `tier == "suspicious"`; `data_estate.score.score` gives `judgment_penalty == 0` and `decoys_accused == []`.
+- `test_escalation_cap`: `clear_reason` → `None` for everything; units = {S00026, S00009}; `max_escalations=1`; one `drop_lead` reply → `len(FakeLLM.calls) == 1`; S00009's reason starts with `"unverified:"` and its decision has `escalated is False`.
+- `test_rejected_other_after_retries_is_unverified`: three rejected `other` findings (evidence `["TX99999"]`) → S00026 reason starts with `"unverified:"`, no fallback finding, `findings == []`.
+- `test_no_llm_scores` and the #66 tests unchanged.
+
+## Definition of done
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+- [ ] `docs/STEP_LOG.md` documents `park_lead`
+- [ ] LEARNINGS.md entry: why `other` is parked rather than accused (the R5 amount cannot be recomputed, and a decoy accused as `other` would still be a double penalty)
+
+## #71 agent/investigate.py: investigate units concurrently (--workers) to keep a cold LLM run under 30 s  `hermes-ok`  OPEN
+
+## Goal
+A cold LLM run on company_42 takes 57–86 s (`wall_s` in `runs/20260912T171920Z.jsonl`, `...T173014Z`, `...T175005Z`, `debug_cold.jsonl`): four signature units investigated one after another, 6–10 tool calls each, one model round-trip per tool call. The stage budget is 90 s for the whole run and #70 adds up to four escalated units, so sequential no longer fits. Investigate units concurrently.
+
+Depends on #66. Coordinate with #70 only through the log contract (the per-entity ordering guarantee in `docs/STEP_LOG.md` already tells readers to group by `entity_id`).
+
+## Spec (`agent/investigate.py`, `agent/llm.py`)
+1. `run(..., workers: int = 4)` and CLI `--workers 4`. `workers=1` must reproduce today's log byte-for-byte (same order, same steps).
+2. `_Log.emit` takes a `threading.Lock`; `step` is assigned and the line written+flushed inside the lock, so steps are strictly increasing across threads and lines never interleave mid-write.
+3. `_llm_loop` splits into a per-unit function `_investigate_unit(ds, unit, llm, rec, tools, max_steps) -> tuple[list[dict], dict[str, str], dict[str, str]]` (findings, dropped, parked) with NO shared mutable state except `rec`. The loop submits the first `max_leads` units to a `concurrent.futures.ThreadPoolExecutor(max_workers=workers)` and merges results in unit rank order (so `findings` and `not_pursued` are deterministic regardless of completion order; `findings` is sorted afterwards anyway). The escalation cap from #70 is decided BEFORE submission (the first N unverified units in rank order), so it is not a race.
+4. `Tools(ds)` is built once and shared: it is read-only after construction (check `agent/tools.py`; if any method mutates instance state, give each worker its own instance).
+5. `agent/llm.py`: the response cache write becomes atomic (write to `<key>.json.tmp` then `os.replace`) so two threads finishing the same key cannot leave a torn file; reading a missing/torn file falls back to a network call. `openai.OpenAI` is thread-safe; one client shared.
+6. `run_end.wall_s` unchanged in meaning. Add `"workers": <n>` to the `run_start` payload (additive).
+7. `_fallback_loop` stays sequential (it takes 0.13 s).
+
+## Tests (`tests/test_investigate.py`)
+- `test_parallel_matches_sequential_case_file`: a FakeLLM built from a callable reply that inspects the last user message to find the unit's entity id and returns, per entity, first a `get_supplier` call and then the deterministic finding for that unit (build it with `agent.investigate._build_finding` on the real units of company_42; the guard accepts it). Run with `workers=1` and `workers=3`, `max_leads=5`; the two case files are equal and both score recall 1.0, penalty 0.
+- `test_parallel_log_is_well_formed`: with `workers=3` the log validates under `agent.steplog.validate_entries` (steps strictly increasing, every `tool_result` right after its `tool_call` for the same entity is NOT required across entities; the validator from #67 must therefore check the `tool_call`/`tool_result` pairing per entity subsequence, adjust it if it does not already), and for each entity the subsequence of kinds is `lead, hypothesis, tool_call, tool_result, decision, guard`.
+- `test_workers_one_is_byte_identical_to_previous_behaviour`: `workers=1` on the two-reply script from `test_fakellm_drives_one_lead` produces exactly the kinds list that test asserts today.
+- `tests/test_llm.py`: `test_cache_write_is_atomic` (no `.tmp` file left behind after `chat`; a torn cache file triggers a fresh request via a fake client).
+
+## Definition of done
+- [ ] A human with `.env` measures a cold run on a fresh seed (`LLM_CACHE=0 python -m agent.investigate data_estate/out/company_101 --workers 4`) and records `wall_s` in the PR; target under 30 s on company_42
+- [ ] `python -m pytest -q` green, `ruff check .` clean, no new dependencies
+
+## #72 LLM-mode batch evaluation on 10 unseen seeds: docs/eval tables + LEARNINGS entry  `cc`  OPEN
+
+## Goal
+The pitch needs the "on records it has never seen" number in LLM mode, and the go/no-go gate before the feature freeze is "mean recall ≥ 0.8, penalty 0 on every seed" (`docs/PLAN.md`). `scripts/eval_batch.py` (#25) exists, `docs/eval/` is empty. All logged LLM runs so far are on company_42, whose answers the model may have effectively memorised through the response cache. This needs `.env`, so it is a human/Claude Code task, not Hermes.
+
+## Steps
+1. Baseline now, before #66 lands:
+   ```
+   LLM_CACHE=0 python scripts/eval_batch.py --seeds 101-110 --schemes random --out docs/eval/2026-09-13-llm-baseline.md
+   python scripts/eval_batch.py --seeds 101-110 --schemes random --no-llm --out docs/eval/2026-09-13-nollm.md
+   ```
+2. Repeat the LLM run after #66, #69 and #70 are merged → `docs/eval/<date>-llm.md`. Keep both tables; the diff is a slide.
+3. Also run `--schemes clean` on 3 seeds (`--seeds 201-203`) in LLM mode: zero findings expected on honest books.
+4. Add to `LEARNINGS.md`: what the baseline showed (which schemes the model loses, how often, why: guard rejections on amount/evidence) and what changed.
+5. If any seed shows `penalty > 0` or a `clean` seed has a finding, open a follow-up issue with the seed number and the `not_pursued`/`findings` entries, labelled `hermes-ok` if the fix is a detector or guard rule, `needs-human` otherwise.
+
+## Definition of done
+- [ ] Both tables committed under `docs/eval/`, PR description quotes `mean_recall`, `seeds_with_penalty`, `wall_p50_s`, `wall_p95_s`
+- [ ] LEARNINGS.md entry
+- [ ] Gate met (mean recall ≥ 0.8, no penalties, no findings on clean seeds) or a follow-up issue filed for every failure
+
+## #73 docs: PLAN.md refresh, HERMES_BRIEF.md for auto-merge, demo/sample_trace.jsonl, issue queue cleanup  `cc`  OPEN
+
+## Goal
+The plan and the Hermes brief predate the investigation loop, the LLM runs and the decision to build the frontend outside this repo. Refresh them so the queue and the docs agree.
+
+## Deliverables (docs only, plus one fixture)
+- `docs/PLAN.md`: current status (what works, what the logged LLM runs showed), the refreshed architecture (streamed step log, API server, frontend external), the issue queue in Hermes pick-up order with dependencies, the auto-merge guardrails, the remaining timeline, and the demo plan.
+- `docs/HERMES_BRIEF.md`: Hermes may work anywhere in the repo except the frozen dataset and the three protected tests; the merge step (wait for the `test` check, squash-merge, delete the branch) and what to do when CI is red; never weaken or delete tests to make CI pass.
+- `demo/sample_trace.jsonl`: a real LLM run on company_42 with all four findings (`runs/20260912T174705Z.jsonl`), for the frontend developer and for #67's example lines.
+- `LEARNINGS.md`: entry on the LLM-mode recall problem (truncated tool-call arguments before #64, ledger IDs after) and the fix plan.
+- `docs/ISSUES.md` regenerated with `python scripts/sync_issues.py`.
+- Issue queue: #28 closed (done in PR #61), #26 relabelled `needs-human` (frontend is external), #27 rewritten to depend on the API server.
+
+## Definition of done
+- [ ] `python -m pytest -q` green
+- [ ] Every open issue is labelled and, where it depends on another, says `Depends on #n`
