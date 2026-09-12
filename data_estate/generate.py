@@ -26,7 +26,7 @@ import random
 import re
 import string
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -289,11 +289,12 @@ class Generator:
                  ("Operador", 6), ("Administrativo", 2)]
         for role, n in roles:
             for _ in range(n):
-                f, l = person_name(self.rng)
+                first, last = person_name(self.rng)
                 st, ct = address(self.rng)
                 self.e.employees.append(Employee(
-                    employee_id=self.nid("E"), name=f"{f} {l}", rfc=rfc_fisica(self.rng, f, l),
-                    role=role, home_street=st, home_city=ct, personal_clabe=clabe(self.rng)))
+                    employee_id=self.nid("E"), name=f"{first} {last}",
+                    rfc=rfc_fisica(self.rng, first, last), role=role,
+                    home_street=st, home_city=ct, personal_clabe=clabe(self.rng)))
 
     def emp(self, role: str) -> Employee:
         return next(x for x in self.e.employees if x.role == role)
@@ -623,7 +624,6 @@ class Generator:
 
     def decoys(self):
         rng = self.rng
-        buyer = self.emp("Gerente de Compras")
 
         # D1: brand-new supplier, round-number invoices, but full delivery trail
         s1 = self.make_supplier("refacciones", onboarded=date(2025, 6, 2))

@@ -103,7 +103,6 @@ def check(out: Path) -> list[str]:
             payments_for[t["invoice_uuid"]].append(t)
     emp_addr = {(e["home_street"], e["home_city"]): e["employee_id"] for e in d["employees"]}
     sup_by = {s["supplier_id"]: s for s in d["suppliers"]}
-    types = {s["type"] for s in d["truth"]["schemes"]}
 
     def flags(sid: str) -> set[str]:
         s = sup_by[sid]
