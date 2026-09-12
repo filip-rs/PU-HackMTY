@@ -43,4 +43,5 @@ Never: push to master · touch `data_estate/out/company_42` · read any `hidden/
 (except `data_estate.score` inside `api/server.py`'s `/score` endpoint, which an issue explicitly allows) · add
 dependencies · change the case-file contract or the dataset schema · edit `tests/test_case_file_contract.py`,
 `tests/test_frozen_dataset.py` or `tests/test_no_hidden_access.py` unless the issue says so · comment on PRs you did
-not open · send dataset contents to any LLM API · take an issue without the `hermes-ok` label.
+not open · send dataset contents to any LLM API · take an issue without the `hermes-ok` label · cite a scheme type outside the
+internal list in AGENTS.md · put the string `ground_truth` under `agent/`.
