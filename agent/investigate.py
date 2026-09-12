@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .clear import clear_reason
 from .config import MXN_PER_1K_COMPLETION_TOKENS, MXN_PER_1K_PROMPT_TOKENS, settings
 from .contract import SCHEME_TYPES, validate_case_file
 from .data import Dataset, load
@@ -273,33 +274,38 @@ def _build_finding(unit: dict, ds: Dataset, scheme_type: str, rule_id: str) -> d
 
 
 # --- not-pursued reasons ----------------------------------------------------
-# One readable clause per detector; explain why the signal alone is not proof.
-_DET_CLAUSES = {
-    "detect_name_twin_69b": "the 69-B list is matched on RFC, not on name — this RFC is not on it",
-    "detect_shared_supplier_address": "the shared address is a commercial building, not an employee's home",
-    "detect_cash_payments": "the cash invoices are below the MXN 2,000 deductibility threshold (LISR Art. 27-III) and goods were received",
-    "detect_new_vendor_round_amounts": "it is a new vendor with round amounts, but it is not on the 69-B list and deliveries are documented",
-    "detect_fast_pay_no_deliverable": "it was paid quickly, but the invoices are for a category that does not require a goods receipt (services)",
-    "detect_no_receipt": "the invoices without a goods receipt are for a category where a receipt is not mandatory",
-    "detect_duplicate_payments": "no confirmed duplicate payment to the same CLABE",
-    "detect_clabe_not_on_master": "the paying CLABE is an on-master account for the invoice, not a divergence",
-    "detect_round_trip": "the money does not return to the company from the counterparty",
-    "detect_employee_address_match": "no kickback outflow to the linked employee's account",
-    "detect_kickback_outflow": "the outflow belongs to a legitimate business payment, not a personal CLABE",
-    "detect_efos": "the RFC is not listed on the SAT 69-B list in a live estado",
-}
+# (#69) A weak lead is cleared only when the records support the innocent
+# explanation; otherwise the reason is an honest "unverified".
 
 
-def _drop_reason(dossier: dict, ds: Dataset) -> str:
-    """A non-engineer-readable explanation of why this entity was not pursued."""
-    parts: list[str] = []
-    for det in sorted(set(dossier.get("detectors", []))):
-        clause = _DET_CLAUSES.get(det)
-        if clause and clause not in parts:
-            parts.append(clause)
-    if not parts:
-        parts.append("no corroborating scheme signature matched")
-    return "; ".join(parts)
+def _drop_reason(dossier: dict, ds: Dataset) -> tuple[str, bool]:
+    """Why this entity was not pursued, from checks that cite records (#69).
+
+    For each detector on the dossier, :func:`agent.clear.clear_reason` returns a
+    grounded innocent explanation when the records support it and ``None`` when
+    it cannot be confirmed. Returns ``(reason, verified)`` — ``verified`` is
+    False exactly when at least one detector fired and the innocent explanation
+    could not be confirmed, which becomes an honest ``"unverified: ..."`` reason.
+    """
+    eid = str(dossier.get("entity_id") or "")
+    dets = sorted(set(dossier.get("detectors", [])))
+    reasons: list[str] = []
+    unverified: list[str] = []
+    for det in dets:
+        r = clear_reason(det, eid, dossier.get("leads", {}).get(det, []) or [], ds)
+        if r is None:
+            unverified.append(det)
+        elif r and r not in reasons:
+            reasons.append(r)
+    if unverified:
+        reason = (
+            f"unverified: {', '.join(unverified)} fired and the innocent explanation "
+            "could not be confirmed from the records; needs a human or a deeper investigation"
+        )
+        return reason, False
+    if not reasons:
+        return "no corroborating scheme signature matched", True
+    return "; ".join(reasons), True
 
 
 def _build_not_pursued(
@@ -313,7 +319,9 @@ def _build_not_pursued(
         eid = d["entity_id"]
         if eid in accused:
             continue
-        reason = dropped.get(eid) or _drop_reason(d, ds)
+        reason = dropped.get(eid)
+        if reason is None:
+            reason, _ = _drop_reason(d, ds)
         out.append({"entity": eid, "reason": reason})
     out.sort(key=lambda x: x["entity"])
     return out
@@ -478,14 +486,14 @@ def _fallback_loop(
         )
         hint = unit["scheme_hint"]
         if not hint:
-            reason = _drop_reason(unit["members"][0], ds)
-            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
+            reason, verified = _drop_reason(unit["members"][0], ds)
+            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
             dropped[eid] = reason
             continue
         rule_id = SCHEME_TO_RULE.get(hint)
         if rule_id is None:
-            reason = _drop_reason(unit["members"][0], ds)
-            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
+            reason, verified = _drop_reason(unit["members"][0], ds)
+            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
             dropped[eid] = reason
             continue
         scheme_type = hint
@@ -551,8 +559,8 @@ def _llm_loop(
         hint = unit["scheme_hint"]
         # Units without a scheme signature are dropped by rule, never by model.
         if not hint:
-            reason = _drop_reason(unit["members"][0], ds)
-            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
+            reason, verified = _drop_reason(unit["members"][0], ds)
+            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
             dropped[eid] = reason
             continue
 
@@ -697,8 +705,8 @@ def _llm_loop(
 
         # Unreachable for signature hints (all four map to a rule); kept as a
         # safe drop for a hint that is not in SCHEME_TO_RULE.
-        reason = _drop_reason(unit["members"][0], ds)
-        rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
+        reason, verified = _drop_reason(unit["members"][0], ds)
+        rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
         dropped[eid] = reason
     return findings, dropped
 
