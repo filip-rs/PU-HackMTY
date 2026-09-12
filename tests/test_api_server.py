@@ -278,3 +278,154 @@ def test_events_stream_tails_a_run_that_is_still_going(api):
     # was logged: the thread still has the case file and the report to write.
     assert stream.rstrip().endswith('event: end\ndata: {"status": "done"}')
     assert socket.getdefaulttimeout() is None
+
+
+# =============================================================== judges' estates (#96)
+# Judges hand over an estate in their own schema at a path given at run time. The API has
+# to list it, run it and hand back the artifacts they read, exactly as it does for ours.
+@pytest.fixture
+def judges_estate(api, judges_mini_db):
+    """tests/fixtures/judges_mini under the out-root, as a CSV dir and as a loose .db."""
+    import shutil
+
+    out = api.tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    csv_dir = out / "estate_mini"
+    shutil.copytree(ROOT / "tests" / "fixtures" / "judges_mini", csv_dir)
+    loose_db = out / "estate_77.db"
+    shutil.copy(judges_mini_db, loose_db)
+    return {"dir": csv_dir, "db": loose_db}
+
+
+def test_datasets_lists_both_estate_shapes(api, judges_estate):
+    status, body, _ = api.json("/datasets")
+    assert status == 200
+    by_name = {d["name"]: d for d in body}
+
+    assert by_name["company_42"]["format"] == "legacy"
+    assert by_name["company_42"]["has_truth"] is True
+
+    judge_dir = by_name["estate_mini"]
+    assert judge_dir["format"] == "judges"
+    assert judge_dir["has_truth"] is False          # a fixture has no answer key
+    assert judge_dir["n_suppliers"] == 2
+    assert judge_dir["n_invoices"] == 3
+    assert judge_dir["n_bank_txns"] == 5            # the third-party leg counts too
+
+    loose = by_name["estate_77"]                    # a .db is named by its stem
+    assert loose["format"] == "judges"
+    assert loose["path"].endswith("estate_77.db")
+    assert loose["n_invoices"] == 3
+
+
+def test_entities_on_a_judge_estate_are_keyed_by_rfc_and_emp(api, judges_estate):
+    status, body, _ = api.json("/datasets/estate_mini/entities")
+    assert status == 200
+    assert body["RFC:AAAA010101AA1"]["kind"] == "supplier"
+    assert body["RFC:AAAA010101AA1"]["name"] == "Servicios Integrales del Bajio SA de CV"
+    assert body["RFC:CCCC030303CC3"]["kind"] == "customer"
+    assert body["EMP:0001"]["kind"] == "employee"
+    assert body["EMP:0001"]["role"] == "Gerente de Compras"
+    assert body["COMPANY"]["rfc"] == "EMP920101AB1"
+    assert body["COMPANY"]["clabe"] == "000000000000000099"
+
+
+@pytest.mark.parametrize("target", ["dir", "db"])
+def test_a_run_on_a_judge_estate_yields_every_artifact_the_judges_read(api, judges_estate, target):
+    path = str(judges_estate[target])
+    status, body, _ = api.json("/runs", method="POST", body={"dataset": path, "no_llm": True})
+    assert status == 202, body
+    run_id = body["run_id"]
+    assert body["submission"].endswith(f"{run_id}_submission.json")
+    assert body["report_html"].endswith(f"{run_id}_report.html")
+
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        _, entry, _ = api.json(f"/runs/{run_id}")
+        if entry["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert entry["status"] == "done", entry
+
+    status, submission, _ = api.json(f"/runs/{run_id}/submission")
+    assert status == 200
+    assert submission["findings"], "the mini estate has a listed vendor"
+    assert all(e.startswith(("RFC:", "EMP:")) for f in submission["findings"] for e in f["entities"])
+
+    status, html, headers = api.request(f"/runs/{run_id}/report.html")
+    assert status == 200
+    assert headers["Content-Type"].startswith("text/html")
+    assert "<svg" in html
+    assert "<script" not in html
+
+    status, verdict, _ = api.json(f"/runs/{run_id}/validate")
+    assert status == 200, verdict
+    assert verdict["ok"] is True, verdict["errors"]
+    assert verdict["errors"] == []
+
+
+def test_validate_runs_the_judges_own_checks_not_our_idea_of_them(api, judges_estate):
+    """A tampered submission must fail with the judges' own error text."""
+    run_id = _finished_run(api, str(judges_estate["db"]), timeout=60)
+    path = api.tmp_path / "runs" / f"{run_id}_submission.json"
+    submission = json.loads(path.read_text(encoding="utf-8"))
+    submission["findings"][0]["scheme_type"] = "creative_accounting"
+    submission["findings"][0]["exhibits"][0]["record_id"] = "INV-DOES-NOT-EXIST"
+    path.write_text(json.dumps(submission), encoding="utf-8")
+
+    status, verdict, _ = api.json(f"/runs/{run_id}/validate")
+    assert status == 200
+    assert verdict["ok"] is False
+    joined = " ".join(verdict["errors"])
+    assert "scheme_type" in joined
+    assert "INV-DOES-NOT-EXIST" in joined, "the estate check must resolve record ids"
+
+
+def test_artifacts_are_404_before_a_run_finishes(api, monkeypatch):
+    def slow(*args, **kwargs):
+        time.sleep(2.0)
+        raise RuntimeError("stopped on purpose")
+
+    monkeypatch.setattr(api_server, "run_investigation", slow)
+    _, body, _ = api.json("/runs", method="POST", body={"dataset": "company_42", "no_llm": True})
+    run_id = body["run_id"]
+    assert api.json(f"/runs/{run_id}/submission")[0] == 404
+    assert api.json(f"/runs/{run_id}/report.html")[0] == 404
+    assert api.json(f"/runs/{run_id}/validate")[0] == 404
+
+
+def test_a_legacy_run_still_produces_a_valid_submission(api):
+    run_id = _finished_run(api)
+    status, verdict, _ = api.json(f"/runs/{run_id}/validate")
+    assert status == 200
+    assert verdict["ok"] is True, verdict["errors"]
+
+
+# ---------------------------------------------------------- generating judge estates
+def test_post_datasets_accepts_the_judges_scheme_names(api):
+    status, body, _ = api.json(
+        "/datasets", method="POST", body={"seed": 9003, "schemes": "phantom_vendor,kickback"}, timeout=120
+    )
+    assert status == 201, body
+    assert body["format"] == "legacy"
+    assert body["name"] == "company_9003"
+
+
+def test_post_datasets_says_so_rather_than_faking_an_unbuilt_scheme(api):
+    """#81 plants these; until then the answer is 501, not a quietly smaller estate."""
+    status, body, _ = api.json("/datasets", method="POST", body={"seed": 9004, "schemes": "threshold_splitting"})
+    assert status == 501
+    assert "#81" in body["error"]
+
+
+def test_post_datasets_in_the_judges_schema_is_not_built_yet(api):
+    """#80 exports to their schema; a legacy estate labelled 'judges' would fail on stage."""
+    status, body, _ = api.json("/datasets", method="POST", body={"seed": 9005, "format": "judges"})
+    assert status == 501
+    assert "#80" in body["error"]
+
+
+def test_post_datasets_rejects_an_unknown_format(api):
+    status, body, _ = api.json("/datasets", method="POST", body={"seed": 9006, "format": "parquet"})
+    assert status == 400
+    assert "format" in body["error"]

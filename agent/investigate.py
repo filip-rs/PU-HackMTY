@@ -837,6 +837,10 @@ def run(
 
         wall = round(time.time() - t0, 3)
         run_metadata = _compute_run_metadata(use_llm, effective_llm, wall)
+        # The artifact paths are known before they are written, so the log's last line can
+        # tell a reader (and the API's event stream) where every output of this run landed.
+        submission_path = _artifact_path(submission, out, "submission.json")
+        report_path = _artifact_path(report, out, "report.html")
         case["run_metadata"] = run_metadata
         rec.emit(
             "run_end",
@@ -852,7 +856,8 @@ def run(
                 "mxn_cost": run_metadata["mxn_cost"],
                 "cost_by_role": run_metadata["cost_by_role"],
                 "case_file": str(out),
-                "report": "",
+                "report": report_path,
+                "submission": submission_path,
             },
         )
 
@@ -860,10 +865,8 @@ def run(
         # rec.entries is the log this run just wrote, already parsed.
         meta = {"seed": seed} if seed is not None else {}
         built: dict | None = None
-        submission_path = _artifact_path(submission, out, "submission.json")
         if submission_path:
             built = write_submission(case, ds, submission_path, rec.entries, meta)
-        report_path = _artifact_path(report, out, "report.html")
         if report_path:
             if built is None:
                 built = build_submission(case, ds, rec.entries, meta)
