@@ -2,7 +2,7 @@
 
 | # | State | Label | Title | PR |
 |---|---|---|---|---|
-| #1 | OPEN | `needs-human` | Repo skeleton + CI |  |
+| #1 | CLOSED | `needs-human` | Repo skeleton + CI |  |
 | #2 | CLOSED | `cc` | Loader module agent/data.py | #33 (merged) |
 | #3 | CLOSED | `cc` | Case-file contract test | #34 (merged) |
 | #4 | CLOSED | `hermes-ok` | detect_efos(ds) | #47 (merged) |
@@ -61,10 +61,11 @@
 | #93 | OPEN | `hermes-ok` | --replay: rebuild case file, submission and report from a stored run with the network disabled |  |
 | #94 | OPEN | `hermes-ok` | agent/clear.py on judge estates: PO, contract, same-bank-institution and cancelled-invoice checks; tool_calls_made and closed_by |  |
 | #95 | OPEN | `hermes-ok` | Leak hygiene: ground_truth string check under agent/, hypothesis log line names its detectors |  |
+| #96 | OPEN | `hermes-ok` | api/server.py: judge-estate datasets and the submission / report.html / validate endpoints (follow-up to #68) |  |
 
 ---
 
-## #1 Repo skeleton + CI  `needs-human`  OPEN
+## #1 Repo skeleton + CI  `needs-human`  CLOSED
 
 ## Goal
 A repo that three agents (Claude Code, Codex, Hermes) can work in from hour zero, coordinated only by GitHub issues and `AGENTS.md`.
@@ -1017,7 +1018,7 @@ On stage a judge picks a seed and a scheme, we type one command, the frontend sh
 
 The frontend is built outside this repo against the API server (#68); this script does not render anything itself. `--serve` starts the API server so the frontend can attach.
 
-Depends on #68 (API server) and #23 (report, closed).
+Depends on #68, #79, #88, #90, #93 (judges' pack: estate loader, submission, HTML report, replay). #23 is closed.
 
 ## Spec: `scripts/demo_run.py`
 `python scripts/demo_run.py --seed 7 [--schemes efos,roundtrip|all|clean] [--dataset <existing dir>] [--no-llm] [--max-leads 12] [--workers 4] [--serve] [--port 8765] [--runs runs]`
@@ -1049,6 +1050,14 @@ Add `demo` to the Makefile: `make demo SEED=7 SCHEMES=all` runs the script with 
 - [ ] `--no-llm` and `--replay-from` both work with the cluster unreachable (test with `LLM_BASE_URL=http://127.0.0.1:9` in the environment)
 - [ ] `docs/INJECT.md` tried by a teammate who did not build the agent: they inject a scheme from the page alone
 - [ ] `python -m pytest -q` green
+
+## Judges' pack amendments (docs/SPEC_GAP.md, added 2026-09-12)
+- Accept `--estate <path>` (a judges' SQLite `.db` or CSV dir per `estate_schema.sql`, #79) as an alternative to `--seed`/`--dataset`; skip generation and validation in that case and never look for `hidden/`.
+- Scheme names for `--schemes`: `efos,kickback,roundtrip,duplicate,threshold,revenue` (#81); `all` means all six.
+- After the run, also write `submission.json` (#88) and `report.html` (#90) next to the case file, run `scripts/judges/validate_format.py --submission ... --estate ...` when the input was a `.db`, and print its PASS/FAIL line.
+- `--replay-from` delegates to `agent.investigate --replay` (#93) so the case file, submission and report are rebuilt offline, not only the log copied.
+- `docs/INJECT.md` Way 2 recipes are written for the **judges' schema** (edit `vendors`, `invoices`, `bank_txns`, `purchase_orders`, `employees`, `efos_list` in the `.db` or CSVs), with the legacy CSV recipes kept in a short second list. The "cannot do" list becomes: five scheme types plus control observations; PO/contract stand in for proof of delivery; third-party bank legs only when the estate carries them; the 69-B list as fresh as its download; synthetic data.
+- Print the three numbers at the end: LLM calls, MXN cost, wall-clock seconds (#89).
 
 ## #28 tests/test_no_hidden_access.py: mechanically enforce AGENTS.md rule 2  `hermes-ok`  CLOSED
 
@@ -1161,6 +1170,13 @@ Hours 24–36 of docs/PLAN.md: everything that is not code. The three-minute scr
 - [ ] Fallback trace saved and its replay tested on the demo laptop
 
 **Depends on #23, #25, #26, #27.** Owner: a human. Agents may draft the markdown from the docs.
+
+## Judges' pack amendments (docs/SPEC_GAP.md, added 2026-09-12)
+- `demo/QA.md` must answer the eight questions in `student-materials/forensic-auditor/README.md` verbatim, each from a page or a log line in under ten seconds: "What happens if I change this input?" (INJECT.md + a live re-run), "Why should I trust this number?" (the reconciliation section of the finding, #90), "What does it do when it's wrong, or when there's nothing to find?" (a clean-books run from the results table, #86; a challenger kill, #91), "Could a real audit team run this tomorrow?" (Method and limits + the three numbers), "What did you cut, and why?" (SPEC_GAP.md "What we cut"), "Why didn't you flag vendor X?" (Leads not pursued, with signal/tools/closer, #94), "How confident are you in finding 2?" (proven/probable + challenger arguments), "What if the employee just happens to bank at the same institution?" (the same-bank check, #94, and the kickback finding's `CP` leg).
+- The artifact judges read is `report.html` (#90) opened from a file with Wi-Fi off, plus `submission.json` validated on stage with `scripts/judges/validate_format.py`. Rehearse the offline replay (#93) as the first fallback and `--no-llm` as the second.
+- The results slide is `results_table.csv` from `scripts/eval_batch.py --report` on seeds 901–910 (#86, #72), with the tuning seeds named next to it.
+- `demo/CANNOT_DO.md`: five scheme types plus control observations; proof of delivery is a PO or contract on judge estates; third-party bank legs only when the estate carries them; the 69-B list lags reality; synthetic data.
+Depends additionally on #86, #88, #90, #93, #94.
 
 ## #42 detect_kickback_outflow(ds): supplier statement outflows to an employee's personal CLABE  `hermes-ok`  CLOSED
 
@@ -1930,7 +1946,7 @@ On judge estates employees have no address, `bank_txns` may or may not carry thi
 ## Definition of done
 - [ ] Three changes, tests green, company_42 and the 10-seed batch unchanged (`scripts/eval_batch.py --seeds 101-105 --no-llm`)
 
-**Depends on #79** (judge-shape frames to exercise) — the code changes themselves do not need it, so start when #79 is merged or open.
+No dependencies: everything here is testable on company_42 plus synthetic frames. When #79 lands, its `tests/fixtures/judges_mini` becomes an extra fixture for these tests (follow-up, not part of this issue).
 
 ### Conventions
 - Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
@@ -2256,3 +2272,25 @@ Two cheap protections against the "Results caps at 2" rule: judges grep `ground_
 - This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
 - Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
 - Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #96 api/server.py: judge-estate datasets and the submission / report.html / validate endpoints (follow-up to #68)  `hermes-ok`  OPEN
+
+## Goal
+#68 builds the API against our legacy CSV datasets. Judges hand us an estate in their schema (SQLite `.db` or CSV dir per `estate_schema.sql`, loaded by #79), and the frontend must be able to start a run on it and fetch the judges' artifacts. Follow-up to #68; do not change #68's endpoints, only add.
+
+## Spec (`api/server.py`)
+- `GET /datasets` also lists: every directory under the roots that contains `estate.db` or `vendors.csv` (`"format": "judges"`, `has_truth` from `hidden/ground_truth.json`), and every `*.db` file directly under a root (`name` = file stem). Legacy entries get `"format": "legacy"`.
+- `POST /datasets` accepts `"format": "judges"` and calls the generator with `--format judges` (#80); `schemes` accepts the six names (#81).
+- `POST /runs` accepts `"dataset"` as a path to a `.db` file or a judges' dir; `agent.investigate.run` handles it (#79). The run also writes `submission.json` (#88) and `report.html` (#90) next to the case file; the 202 body gains `"submission"` and `"report_html"`.
+- New: `GET /runs/{id}/submission` (JSON, 404 until done), `GET /runs/{id}/report.html` (`text/html`, 404 until done), `GET /runs/{id}/validate` (runs `scripts/judges/validate_format.py` logic in-process: `{"ok": bool, "errors": [...]}`; uses `--estate` when the dataset is a `.db`).
+- `GET /datasets/{name}/entities` on a judges' estate keys entities by `RFC:...`/`EMP:...` and includes `"COMPANY": {"rfc", "clabe"}`.
+- `api/README.md` and `docs/STEP_LOG.md` (if it lists artifacts) updated.
+
+## Tests (`tests/test_api_server.py` additions)
+- With `tests/fixtures/judges_mini` (#79) copied under `out_root`: it appears in `/datasets` with `format == "judges"`; `POST /runs {"dataset": <that path>, "no_llm": true}` → done; `/submission` validates (`validate_structure` → `[]`); `/report.html` body contains `<svg`; `/validate` → `ok true`.
+- Legacy assertions from #68 unchanged.
+
+## Definition of done
+- [ ] Endpoints added, tests green, ruff clean, no new dependencies; frontend teammate told about the two new artifact endpoints
+
+**Depends on #68, #79, #88, #90.**
