@@ -1,0 +1,4 @@
+uuid,issuer_rfc,receiver_rfc,issue_date,subtotal,iva,total,concepto_text,uso_cfdi,forma_pago,metodo_pago,status
+FA-0001,AAAA010101AA1,EMP920101AB1,2025-02-12,98000.00,15680.00,113680.00,Partes de maquinaria,G03,03,PUE,vigente
+FB-0002,BBBB020202BB2,EMP920101AB1,2025-03-05,50000.00,8000.00,58000.00,Mantenimiento mensual,G03,03,PUE,vigente
+FC-0003,EMP920101AB1,CCCC030303CC3,2025-06-20,200000.00,32000.00,232000.00,Venta de equipo,I01,99,PPD,vigente

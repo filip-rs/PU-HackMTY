@@ -1,0 +1,5 @@
+entry_id,date,account_code,account_name,debit,credit,description,invoice_uuid,cost_center,approver
+1,2025-02-12,5000,Compras,113680.00,0,Compra FA-0001,FA-0001,PLANTA,Maria Lopez
+2,2025-03-05,5000,Compras,58000.00,0,Compra FB-0002,FB-0002,PLANTA,Maria Lopez
+3,2025-06-20,4000,Ingresos,0,232000.00,Venta FC-0003,FC-0003,VENTAS,Maria Lopez
+4,2025-06-30,6000,Nomina,30000.00,0,Nomina junio,,PLANTA,Maria Lopez
