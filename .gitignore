@@ -16,6 +16,8 @@ data_estate/out/*
 # agent run outputs
 case_file.json
 runs/
+# llm response cache (regenerated; never commit)
+.cache/
 # editors / OS
 .idea/
 .vscode/
