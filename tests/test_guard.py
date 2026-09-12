@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from agent.data import load
-from agent.guard import guard
+from agent.guard import NARRATIVE_MAX, guard
 from agent.rules import LEGAL_TO_ID, RULES, Rule
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -185,3 +185,51 @@ def test_duplicate_evidence_deduped(ds):
     assert len(clean["accused"]) == len(set(clean["accused"]))
     assert len(clean["evidence"]) == len(set(clean["evidence"]))
     assert clean["evidence"].count(dup) == 1
+
+
+# --- ledger refs are context, not evidence (#65) -----------------------------
+
+def test_ledger_ids_moved_to_narrative(ds):
+    finding = _ref_finding(ds, "duplicate_invoice_payment")
+    original_evidence = _ref_finding(ds, "duplicate_invoice_payment")["evidence"]
+    finding = {**finding, "evidence": original_evidence + ["GL00652"]}
+    clean, reasons = guard(finding, ds)
+    assert clean is not None, reasons
+    assert reasons == []
+    assert clean["evidence"] == original_evidence
+    assert "GL00652" in clean["narrative"]
+    assert "Ledger entries consulted" in clean["narrative"]
+
+
+def test_only_ledger_ids_rejected(ds):
+    finding = _ref_finding(ds, "duplicate_invoice_payment")
+    finding = {**finding, "evidence": ["GL00652"]}
+    clean, reasons = guard(finding, ds)
+    assert clean is None
+    assert "only ledger entries" in reasons[0]
+
+
+def test_ledger_ids_deduped_in_narrative(ds):
+    finding = _ref_finding(ds, "duplicate_invoice_payment")
+    first_id = finding["evidence"][0]
+    finding = {**finding, "evidence": [first_id, "GL00652", "GL00652"]}
+    clean, reasons = guard(finding, ds)
+    assert clean is not None, reasons
+    assert clean["narrative"].count("GL00652") == 1
+
+
+def test_ledger_plus_fabricated_still_rejected(ds):
+    finding = _ref_finding(ds, "duplicate_invoice_payment")
+    finding = {**finding, "evidence": finding["evidence"] + ["GL00652", "TX99999"]}
+    clean, reasons = guard(finding, ds)
+    assert clean is None
+    assert any("TX99999" in r for r in reasons)
+
+
+def test_narrative_truncated_after_ledger_append(ds):
+    finding = _ref_finding(ds, "duplicate_invoice_payment")
+    finding = {**finding, "narrative": "x" * 1000,
+               "evidence": finding["evidence"] + ["GL00652"]}
+    clean, reasons = guard(finding, ds)
+    assert clean is not None, reasons
+    assert len(clean["narrative"]) == NARRATIVE_MAX

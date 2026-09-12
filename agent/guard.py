@@ -4,7 +4,9 @@ Nothing from the investigation loop enters a case file unless every cited ID
 exists, the rule is one we recognise, the evidence belongs to the accused
 entities, and the peso amount is consistent with the accused entities' records
 (25% tolerance, the same tolerance the scorer uses). This is the answer to "how
-do you know it did not hallucinate?".
+do you know it did not hallucinate?". Ledger entry IDs (``GL...``) are
+legitimate context but not evidence IDs under the contract: they are set aside,
+never a rejection, and surfaced at the end of the narrative.
 
 :func:`guard` is a pure check over a single proposed finding and the Dataset:
 it never raises, never touches ``hidden/``, and returns the *cleaned* finding
@@ -112,6 +114,32 @@ def _dedupe(seq: list[str]) -> list[str]:
     return out
 
 
+def _split_ledger_refs(evidence: list[str], ds: Dataset) -> tuple[list[str], list[str]]:
+    """Split evidence into ``(evidence_without_ledger, ledger_ids)``.
+
+    An ID is a ledger ref when it is one of ``ds.ledger['entry_id']``. Ledger
+    rows are legitimate context (the duplicate payment is booked straight to an
+    expense account) but they are *not* case-file evidence IDs, so the guard
+    sets them aside rather than rejecting the finding. Both lists keep
+    first-occurrence order and are deduped.
+    """
+    ledger_ids: set[str] = set(ds.ledger["entry_id"]) if len(ds.ledger) else set()
+    ev_out: list[str] = []
+    lead: list[str] = []
+    ev_seen: set[str] = set()
+    lead_seen: set[str] = set()
+    for e in evidence:
+        if e in ledger_ids:
+            if e not in lead_seen:
+                lead_seen.add(e)
+                lead.append(e)
+        else:
+            if e not in ev_seen:
+                ev_seen.add(e)
+                ev_out.append(e)
+    return ev_out, lead
+
+
 # --- the guard ---------------------------------------------------------------
 
 def guard(finding: dict, ds: Dataset) -> tuple[dict | None, list[str]]:
@@ -129,6 +157,15 @@ def guard(finding: dict, ds: Dataset) -> tuple[dict | None, list[str]]:
     raw_evidence = finding.get("evidence", [])
     accused = _dedupe(raw_accused) if isinstance(raw_accused, list) else raw_accused
     evidence = _dedupe(raw_evidence) if isinstance(raw_evidence, list) else raw_evidence
+    # Ledger rows are context, not evidence: set them aside (never a rejection)
+    # so every later check runs on the record kinds the contract accepts.
+    evidence, ledger_ids = _split_ledger_refs(evidence, ds)
+    if not evidence and ledger_ids:
+        return None, [
+            "evidence: only ledger entries were cited ("
+            + ", ".join(ledger_ids[:3])
+            + "); cite invoice, TX, CP or GR records"
+        ]
     check = {**finding, "accused": accused, "evidence": evidence}
 
     # 1. case-file contract checks on this (deduped) finding.
@@ -194,8 +231,12 @@ def guard(finding: dict, ds: Dataset) -> tuple[dict | None, list[str]]:
         "evidence": evidence,
     }
     narrative = finding.get("narrative")
-    if isinstance(narrative, str) and narrative:
-        clean["narrative"] = narrative[:NARRATIVE_MAX]
+    base = narrative[:NARRATIVE_MAX] if isinstance(narrative, str) and narrative else ""
+    if ledger_ids:
+        sentence = " Ledger entries consulted: " + ", ".join(ledger_ids) + "."
+        clean["narrative"] = ((base + sentence) if base else sentence)[:NARRATIVE_MAX]
+    elif base:
+        clean["narrative"] = base
 
     return clean, []
 
