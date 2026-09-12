@@ -10,7 +10,7 @@ server.
 
 | module | what it does |
 |---|---|
-| `data.py` | load a dataset directory into a typed `Dataset` (#2). Never opens `hidden/`. |
+| `data.py` | load a dataset into a typed `Dataset` — our CSV layout, a judges' `.db`, or a judges' CSV dir (#2, #79). Never opens the answer key. |
 | `detectors/` | one module per detector; `detect_<name>(ds) -> list[dict]`, pure & deterministic. Auto-registered. |
 | `leads.py` | aggregate detector output into ranked dossiers + `scheme_hint` (#44). |
 | `tools.py` | read-only tool layer the LLM may call; every result carries record IDs (#12). |
@@ -22,12 +22,17 @@ server.
 | `steplog.py` | the step-log contract as code: `KINDS`, `REQUIRED_PAYLOAD`, `parse_lines`, `validate_entries` (#67). |
 | `investigate.py` | the loop: detectors → units → (`--no-llm` fallback or LLM loop) → case file + step log (#13). |
 | `report.py` | human-readable case file: `render`, `exposure`, `money_trail` (#23). |
+| `submit.py` | the judges' `submission.json`: prefixed ids, exhibits with a `source_table`, money trail, confidence, declined leads (#88). |
 
 ## CLI commands
 
 All are run as `python -m agent.<module>`:
 
-- `python -m agent.investigate <dataset_dir> [--out case_file.json] [--log runs/T.jsonl] [--max-leads 12] [--max-steps 12] [--no-llm]`
+- `python -m agent.investigate <estate> [--out case_file.json] [--log runs/T.jsonl] [--submission submission.json] [--seed N] [--max-leads 12] [--max-steps 12] [--no-llm]`
+  — `<estate>` is a legacy dataset dir, a judges' `estate.db` or a judges' CSV dir. `--submission` defaults to
+  `submission.json` next to `--out`; pass `--submission ""` to skip it.
+- `python -m agent.submit <estate> <case_file.json> [--log run.jsonl] [--seed N] [--out submission.json]`
+  — rebuild the judges' JSON from a case file that already exists.
 - `python -m agent.leads <dataset_dir> [--json] [--top N]`
 - `python -m agent.steplog <log_file>` — validate a step log ("OK N entries").
 - `python -m agent.report <dataset_dir> <case_file.json> [--out case_file.md] [--log runs/T.jsonl]`
@@ -55,6 +60,13 @@ and `scripts/check_llm.py`); without it the default path is the deterministic
   flushed per event. See [`docs/STEP_LOG.md`](../docs/STEP_LOG.md) for the full
   contract and how to tail it.
 - The human-readable report at `--out` of `agent.report`.
+- The judges' `submission.json` next to the case file (`--submission`), checked by
+  their own validator: `python scripts/judges/validate_format.py --submission submission.json --estate estate.db`.
 
-The case-file contract (`findings[]`, `not_pursued[]`, scheme types) is defined
-in `data_estate/score.py`; `agent/contract.py` enforces it.
+Two output contracts, both live. The case file (`findings[]`, `not_pursued[]`, our scheme
+types) is defined in `data_estate/score.py` and enforced by `agent/contract.py`. The
+submission is `submission_schema.json` from the judges' pack, built by `agent/submit.py`
+and enforced in CI by the vendored `scripts/judges/validate_format.py`. Where they
+disagree, the submission wins: a `duplicate_invoice_payment` finding is a real control
+failure but not one of the judges' five scheme types, so it is *moved* into
+`leads_not_pursued` with its evidence ids in the reason, never dropped and never relabelled.

@@ -46,6 +46,7 @@ from .guard import _acceptable_evidence, _evidence_kind, guard
 from .leads import STRONG, aggregate
 from .llm import LLM, assistant_message, tool_message
 from .rules import RULES
+from .submit import write_submission
 from .tools import TOOL_SCHEMAS, Tools
 
 # --- scheme signature -> evidence-guard rule --------------------------------
@@ -767,6 +768,15 @@ def _compute_run_metadata(use_llm: bool, llm: Any, wall: float) -> dict:
     }
 
 
+def _submission_path(submission: str | None, out: str | None) -> str:
+    """Where submission.json goes: as asked, else next to the case file. "" disables it."""
+    if submission == "":
+        return ""
+    if submission:
+        return submission
+    return str(Path(out).with_name("submission.json")) if out else ""
+
+
 def run(
     dataset_dir: str | Path,
     *,
@@ -776,8 +786,15 @@ def run(
     max_leads: int = 12,
     max_steps: int = 12,
     llm: Any = None,
+    submission: str | None = None,
+    seed: int | None = None,
 ) -> dict:
-    """Run the investigation; returns the case-file dict after writing it and the log."""
+    """Run the investigation; returns the case-file dict after writing it and the log.
+
+    ``submission`` writes the judges' ``submission.json`` (#88) next to the case file;
+    pass ``""`` to skip it. It is built from the case file, the estate and the step log,
+    so it never asserts anything the run did not already prove.
+    """
     ds = load(dataset_dir)
     effective_llm = llm
     if effective_llm is None and not no_llm:
@@ -837,6 +854,10 @@ def run(
         )
 
         _write_case_file(case, out)
+        submission_path = _submission_path(submission, out)
+        if submission_path:
+            # rec.entries is the log this run just wrote, already parsed.
+            write_submission(case, ds, submission_path, rec.entries, {"seed": seed} if seed is not None else {})
         return case
     finally:
         rec.close()
@@ -850,6 +871,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-leads", type=int, default=12)
     parser.add_argument("--max-steps", type=int, default=12)
     parser.add_argument("--no-llm", action="store_true")
+    parser.add_argument(
+        "--submission",
+        default=None,
+        help="path for the judges' submission.json (default: next to --out; \"\" to skip)",
+    )
+    parser.add_argument("--seed", type=int, default=None, help="estate seed recorded in the submission")
     args = parser.parse_args(argv)
     case = run(
         args.dataset_dir,
@@ -858,6 +885,8 @@ def main(argv: list[str] | None = None) -> int:
         no_llm=args.no_llm,
         max_leads=args.max_leads,
         max_steps=args.max_steps,
+        submission=args.submission,
+        seed=args.seed,
     )
     print(json.dumps(case, ensure_ascii=False, indent=2))
     print(f"wrote {args.out}")

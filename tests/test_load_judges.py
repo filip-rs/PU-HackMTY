@@ -6,59 +6,20 @@ would be zero however good the rest is. These tests pin the adapter with a hand-
 mini estate (`tests/fixtures/judges_mini/`) small enough to check by hand.
 
 The same fixture is loaded twice — once as the CSV directory, once as a SQLite estate
-built from those CSVs with the real column types (REAL amounts, an INTEGER entry_id) —
-and the two must produce identical frames.
+built from those CSVs with the real column types (REAL amounts, an INTEGER entry_id, by
+the ``judges_mini_db`` fixture in conftest) — and the two must produce identical frames.
 """
 from __future__ import annotations
 
-import csv
-import sqlite3
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from agent.data import JUDGE_COLUMNS, load
+from agent.data import load
 
 ROOT = Path(__file__).resolve().parents[1]
 MINI = ROOT / "tests" / "fixtures" / "judges_mini"
-
-# The column types estate_schema.sql declares, so the .db exercises the str/REAL path.
-SQL_TYPES = {
-    "vendors": "rfc TEXT PRIMARY KEY, legal_name TEXT, registered_date TEXT, address TEXT, bank_clabe TEXT, category TEXT, contact_email TEXT",
-    "invoices": "uuid TEXT PRIMARY KEY, issuer_rfc TEXT, receiver_rfc TEXT, issue_date TEXT, subtotal REAL, iva REAL, total REAL, concepto_text TEXT, uso_cfdi TEXT, forma_pago TEXT, metodo_pago TEXT, status TEXT",
-    "ledger": "entry_id INTEGER PRIMARY KEY, date TEXT, account_code TEXT, account_name TEXT, debit REAL, credit REAL, description TEXT, invoice_uuid TEXT, cost_center TEXT, approver TEXT",
-    "bank_txns": "txn_id TEXT PRIMARY KEY, date TEXT, from_clabe TEXT, to_clabe TEXT, amount REAL, reference TEXT, channel TEXT",
-    "purchase_orders": "po_id TEXT PRIMARY KEY, vendor_rfc TEXT, date TEXT, amount REAL, requester TEXT, approver TEXT, description TEXT",
-    "contracts": "contract_id TEXT PRIMARY KEY, vendor_rfc TEXT, start_date TEXT, value REAL, scope_text TEXT",
-    "employees": "emp_id TEXT PRIMARY KEY, name TEXT, role TEXT, bank_clabe TEXT, hire_date TEXT",
-    "efos_list": "rfc TEXT PRIMARY KEY, legal_name TEXT, status TEXT, publication_date TEXT",
-}
-REAL_COLUMNS = {"subtotal", "iva", "total", "debit", "credit", "amount", "value"}
-INT_COLUMNS = {"entry_id"}
-
-
-def build_db(csv_dir: Path, db_path: Path) -> Path:
-    """Write the CSV estate into a SQLite file with the schema's own column types."""
-    conn = sqlite3.connect(db_path)
-    try:
-        for table, columns in JUDGE_COLUMNS.items():
-            conn.execute(f"CREATE TABLE {table} ({SQL_TYPES[table]})")
-            with (csv_dir / f"{table}.csv").open(encoding="utf-8", newline="") as fh:
-                rows = list(csv.DictReader(fh))
-            for row in rows:
-                values = [
-                    float(row[c]) if c in REAL_COLUMNS else int(row[c]) if c in INT_COLUMNS else row[c]
-                    for c in columns
-                ]
-                conn.execute(
-                    f"INSERT INTO {table} VALUES ({','.join('?' * len(columns))})", values
-                )
-        conn.commit()
-    finally:
-        conn.close()
-    return db_path
-
 
 @pytest.fixture(scope="module")
 def mini():
@@ -66,9 +27,9 @@ def mini():
 
 
 @pytest.fixture(scope="module")
-def mini_db(tmp_path_factory):
-    db = build_db(MINI, tmp_path_factory.mktemp("estate") / "mini.db")
-    return load(db)
+def mini_db(judges_mini_db):
+    """The same estate, read out of a SQLite file instead of the CSVs."""
+    return load(judges_mini_db)
 
 
 FRAMES = (
