@@ -115,6 +115,14 @@ def detect_kickback_outflow(ds, **params) -> list[dict]:
                 "employee_name": emp_info["name"],
                 "employee_role": emp_info["role"],
                 "same_approver": sup_info["approved_by"] == employee_id,
+                # Judge-shape (#84): the supplier's approver == the employee who
+                # receives the money is the strong link; a shared address is only
+                # corroboration.
+                "approver_link": sup_info["approved_by"] == employee_id,
+                # This detector only fires on a real statement outflow to an
+                # employee personal CLABE, so it is never the weak same-institution
+                # decoy pattern (that check lives in agent/clear.py, #94).
+                "same_bank_only": False,
                 "n_outflows": int(len(items_sorted)),
                 "outflow_total_mxn": outflow_total,
                 "first_outflow": first_outflow.strftime("%Y-%m-%d"),

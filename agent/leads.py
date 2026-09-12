@@ -32,22 +32,31 @@ STRONG: frozenset[str] = frozenset(
     }
 )
 
-# First signature whose detector set is a subset of the entity's detectors wins;
-# otherwise the entity carries no scheme hint.
+# Signatures are checked in order; every signature whose detector set is a subset
+# of the entity's detectors fires (an entity may sit in two schemes, "entangled"),
+# and the docket carries *all* of them. ``scheme_hint`` is kept as the first one
+# for compatibility.
 SIGNATURES: list[tuple[frozenset[str], str]] = [
     (frozenset({"detect_efos"}), "efos_fake_supplier"),
-    (frozenset({"detect_employee_address_match", "detect_kickback_outflow"}), "kickback_shell"),
+    # On judge estates employees have no address, so a kickback is proven by the
+    # supplier's own statement outflow to an employee personal CLABE alone;
+    # a shared address is corroboration, not a requirement.
+    (frozenset({"detect_kickback_outflow"}), "kickback_shell"),
     (frozenset({"detect_round_trip"}), "round_trip_sales"),
     (frozenset({"detect_duplicate_payments", "detect_clabe_not_on_master"}), "duplicate_invoice_payment"),
 ]
 
 
+def scheme_hints(detectors: set[str]) -> list[str]:
+    """Return every scheme type whose full signature fires on ``detectors``, in SIGNATURES order."""
+    d = set(detectors)
+    return [name for signature, name in SIGNATURES if signature <= d]
+
+
 def scheme_hint(detectors: set[str]) -> str:
-    """Return the scheme type whose full signature fires on ``detectors``, else ``""``."""
-    for signature, name in SIGNATURES:
-        if signature <= set(detectors):
-            return name
-    return ""
+    """Return the first scheme type whose full signature fires, else an empty string."""
+    hints = scheme_hints(detectors)
+    return hints[0] if hints else ""
 
 
 def _kind(entity_id: str) -> str:
@@ -125,6 +134,7 @@ def aggregate(ds, leads: dict[str, list[dict]] | None = None) -> list[dict]:
                             related.add(sv)
                 evidence.update(str(e) for e in lead.get("evidence", []))
 
+        _hints = scheme_hints(set(detectors))
         dossiers.append(
             {
                 "entity_id": eid,
@@ -138,7 +148,8 @@ def aggregate(ds, leads: dict[str, list[dict]] | None = None) -> list[dict]:
                 "evidence": sorted(evidence),
                 "n_evidence": len(evidence),
                 "related": sorted(related),
-                "scheme_hint": scheme_hint(set(detectors)),
+                "scheme_hints": _hints,
+                "scheme_hint": _hints[0] if _hints else "",
                 "leads": dict(det_leads),
             }
         )

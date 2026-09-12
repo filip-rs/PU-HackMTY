@@ -145,9 +145,15 @@ def _build_units(dossiers: list[dict]) -> list[dict]:
     groups: dict[str, list[dict]] = defaultdict(list)
     singles: list[dict] = []
     for d in dossiers:
-        hint = d.get("scheme_hint") or ""
-        if hint:
-            groups[hint].append(d)
+        # A dossier may carry several scheme hints (an entity can sit in two
+        # entangled schemes); it contributes a unit to *each* matching group.
+        hints = d.get("scheme_hints")
+        if hints is None:
+            hints = [d.get("scheme_hint")] if d.get("scheme_hint") else []
+        hints = [h for h in hints if h]
+        if hints:
+            for hint in hints:
+                groups[hint].append(d)
         else:
             singles.append(d)
 
