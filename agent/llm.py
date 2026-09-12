@@ -214,7 +214,7 @@ class FakeLLM:
     def chat(self, messages, tools: list[dict] | None = None, *, tool_choice: str | dict = "auto",
              max_tokens: int = 8192) -> Reply:
         self.calls.append(
-            {"messages": messages, "tools": tools, "tool_choice": tool_choice, "max_tokens": max_tokens}
+            {"messages": list(messages), "tools": tools, "tool_choice": tool_choice, "max_tokens": max_tokens}
         )
         if not self._replies:
             raise RuntimeError("FakeLLM exhausted")
