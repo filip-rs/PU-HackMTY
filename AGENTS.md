@@ -9,8 +9,10 @@ suppliers it cannot back with a rule broken, a peso amount, and record IDs. See 
 - `data_estate/` — synthetic company generator, validator, scorer (stdlib only). Owner: Codex. Read data_estate/README.md first.
 - `data_estate/out/company_42/` — FROZEN demo dataset. Never regenerate, never edit. `tests/test_frozen_dataset.py` enforces this.
 - `agent/` — the investigation agent: loader, detectors, tools, loop, evidence guard, case-file writer. Owner: Claude Code.
+  `agent/detectors/` holds one module per detector (`<name>.py` → `detect_<name>(ds)`), auto-registered by its `__init__.py`; never edit another detector's module.
+- `tests/conftest.py` — fixtures `ds` (company_42 loaded), `truth`, `scheme(type)`, `decoy_ids`. Tests may read `hidden/`; `agent/` may not.
 - `demo/` — story, live-trace UI, demo script. Owner: human.
-- `tests/` — pytest. CI runs `pytest -q` on every push and PR.
+- `tests/` — pytest, one file per module (`tests/test_detect_<name>.py` for detectors). CI runs `pytest -q` on every push and PR.
 - `docs/` — brief, strategy, plan, issue queue mirror, Hermes brief. `scripts/` — one-off checks such as `check_llm.py`.
 
 ## Hard rules
