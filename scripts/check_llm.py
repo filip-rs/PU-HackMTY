@@ -63,7 +63,7 @@ def check_tools(env: dict[str, str]) -> int:
         "tools": [ADD_TOOL],
         "tool_choice": "auto",
         "temperature": 0,
-        "max_tokens": 64,
+        "max_tokens": 512,  # headroom for reasoning models that think before calling the tool
     })
     message = res["choices"][0]["message"]
     calls = message.get("tool_calls") or []
@@ -104,10 +104,16 @@ def main() -> int:
         res = request(env, "/chat/completions", {
             "model": env["LLM_MODEL"],
             "messages": [{"role": "user", "content": "Reply with the single word OK."}],
-            "max_tokens": 8,
+            "max_tokens": 512,  # reasoning models burn tokens before content; 8 made content come back null
             "temperature": 0,
         })
-        text = res["choices"][0]["message"]["content"].strip()
+        message = res["choices"][0]["message"]
+        text = message.get("content")
+        if text is None:
+            print(f"WARNING: {env['LLM_MODEL']} returned content=null (reasoning ate all tokens?) "
+                  f"reasoning={message.get('reasoning_content')!r}")
+            text = ""
+        text = text.strip()
         print(f"OK  {env['LLM_MODEL']} @ {env['LLM_BASE_URL']}  {time.time() - t0:.1f}s  reply={text!r}")
         if args.tools:
             return check_tools(env)
