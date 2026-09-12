@@ -27,11 +27,14 @@ grouped into one finding. LLM access is only through ``agent.llm.LLM`` built fro
 ``agent.config.settings()`` (#22) — never an HTTP client here.
 
 CLI: ``python -m agent.investigate <dataset_dir> [--out case_file.json] [--log runs/T.jsonl] [--max-leads 12] [--max-steps 12] [--no-llm]``
+or ``python -m agent.investigate --replay <log.jsonl|case_file.json> [--out ...]`` to rebuild a
+run offline from its step log (never constructs an LLM, works with Wi-Fi off; #93).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -48,6 +51,7 @@ from .leads import STRONG, aggregate
 from .llm import LLM, assistant_message, tool_message
 from .report import render_html
 from .rules import RULES
+from .steplog import parse_lines
 from .submit import build_submission, write_submission
 from .tools import TOOL_SCHEMAS, Tools
 
@@ -845,6 +849,9 @@ def run(
 
         wall = round(time.time() - t0, 3)
         run_metadata = _compute_run_metadata(use_llm, effective_llm, wall)
+        # #93: the case file records the path of the log that produced it, so a
+        # later ``--replay`` can be invoked with the case file alone.
+        run_metadata["log"] = log_path
         # The artifact paths are known before they are written, so the log's last line can
         # tell a reader (and the API's event stream) where every output of this run landed.
         submission_path = _artifact_path(submission, out, "submission.json")
@@ -866,6 +873,9 @@ def run(
                 "case_file": str(out),
                 "report": report_path,
                 "submission": submission_path,
+                # #93: the full block, so ``--replay`` can rebuild the run's metadata
+                # numbers offline (it is the source of truth for a replay).
+                "run_metadata": run_metadata,
             },
         )
 
@@ -887,9 +897,136 @@ def run(
         rec.close()
 
 
+def replay(
+    source: str | Path,
+    *,
+    out: str | None = "case_file.json",
+    submission: str | None = None,
+    report: str | None = None,
+    seed: int | None = None,
+) -> dict:
+    """Rebuild a case file (and submission/report) from a stored run's step log, offline.
+
+    ``source`` is either a step-log ``.jsonl`` written by :func:`run`, or a case
+    file ``.json`` whose ``run_metadata.log`` names that log — so ``--replay`` can
+    be invoked with the case file alone. ``findings`` are taken from the log's
+    *accepted* ``guard`` entries and re-validated through the evidence guard, so
+    nothing is trusted blindly: a finding the guard now rejects (e.g. a tampered
+    evidence id) is dropped, a warning line is printed, and the run still exits 0.
+    ``not_pursued`` is rebuilt with the same deterministic machinery the run used.
+    ``run_metadata`` copies the original numbers and adds ``replayed_from``.
+
+    No ``LLM`` is ever constructed and no network is touched, so this works with
+    Wi-Fi off and ``LLM_BASE_URL`` pointing at a dead port.
+    """
+    src = Path(source)
+    original_meta: dict = {}
+    if src.suffix == ".json":
+        case_ref = json.loads(src.read_text(encoding="utf-8"))
+        original_meta = dict(case_ref.get("run_metadata") or {})
+        log_path = original_meta.get("log")
+        if not log_path:
+            raise ValueError(f"{src}: no run_metadata.log to replay")
+    else:
+        log_path = str(src)
+
+    text = Path(log_path).read_text(encoding="utf-8")
+    entries, complete = parse_lines(text)
+    if not entries:
+        raise ValueError(f"{log_path}: empty step log")
+    if not complete:
+        print(f"WARNING: {log_path}: last line was partial (run was interrupted)", file=sys.stderr)
+
+    run_start = next((e for e in entries if e["kind"] == "run_start"), None)
+    if run_start is None:
+        raise ValueError(f"{log_path}: no run_start entry")
+    dataset = (run_start.get("payload") or {}).get("dataset")
+    if not dataset:
+        raise ValueError(f"{log_path}: run_start has no dataset path")
+    ds = load(dataset)
+
+    # findings: accepted guard entries, re-validated through the guard.
+    raw: list[dict] = []
+    for e in entries:
+        if e["kind"] != "guard":
+            continue
+        payload = e["payload"] or {}
+        if payload.get("accepted") is not True:
+            continue
+        finding = payload.get("finding")
+        if not isinstance(finding, dict) or not finding.get("scheme_type"):
+            continue
+        clean, reasons = guard(dict(finding), ds)
+        if clean is not None:
+            raw.append(clean)
+        else:
+            print(
+                "WARNING: dropped a "
+                f"{finding.get('scheme_type')!r} finding on replay: " + "; ".join(reasons),
+                file=sys.stderr,
+            )
+    # Dedupe by (scheme_type, accused) — the run emits one accepted guard per unit.
+    seen: set[tuple[str, tuple]] = set()
+    findings: list[dict] = []
+    for f in raw:
+        key = (f["scheme_type"], tuple(f["accused"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(f)
+    findings.sort(key=lambda f: (f["scheme_type"], f["accused"]))
+
+    # dropped map from the log's drop_lead decisions (last one wins, matching the loop).
+    dropped: dict[str, str] = {}
+    for e in entries:
+        if e["kind"] != "decision":
+            continue
+        payload = e["payload"] or {}
+        if payload.get("action") != "drop_lead":
+            continue
+        eid = str(e.get("entity_id") or "")
+        if eid:
+            dropped[eid] = str(payload.get("reason") or "dropped")
+
+    dossiers = aggregate(ds, run_all(ds))
+    not_pursued = _build_not_pursued(dossiers, ds, findings, dropped)
+    case: dict = {"findings": findings, "not_pursued": not_pursued}
+
+    errors = validate_case_file(case, ds)
+    if errors:
+        raise RuntimeError("replayed case file failed the contract: " + "; ".join(errors))
+
+    # run_metadata: the original numbers, plus where it was replayed from.
+    if not original_meta:
+        run_end = next((e for e in entries if e["kind"] == "run_end"), None)
+        run_end_payload = (run_end or {}).get("payload") or {}
+        original_meta = dict(run_end_payload.get("run_metadata") or {})
+    meta = dict(original_meta)
+    meta["replayed_from"] = str(src)
+    meta.setdefault("log", log_path)
+    case["run_metadata"] = meta
+
+    submission_path = _artifact_path(submission, out, "submission.json")
+    report_path = _artifact_path(report, out, "report.html")
+    _write_case_file(case, out)
+    meta_for_sub = {"seed": seed} if seed is not None else {}
+    built: dict | None = None
+    if submission_path:
+        built = write_submission(case, ds, submission_path, entries, meta_for_sub)
+    if report_path:
+        if built is None:
+            built = build_submission(case, ds, entries, meta_for_sub)
+        Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(report_path).write_text(
+            render_html(case, ds, submission=built, log=entries), encoding="utf-8"
+        )
+    return case
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m agent.investigate")
-    parser.add_argument("dataset_dir")
+    parser.add_argument("dataset_dir", nargs="?", default=None,
+                        help="dataset dir (not needed with --replay)")
     parser.add_argument("--out", default="case_file.json")
     parser.add_argument("--log", default=None)
     parser.add_argument("--max-leads", type=int, default=12)
@@ -906,18 +1043,35 @@ def main(argv: list[str] | None = None) -> int:
         help="path for the five-section report.html (default: next to --out; \"\" to skip)",
     )
     parser.add_argument("--seed", type=int, default=None, help="estate seed recorded in the submission")
-    args = parser.parse_args(argv)
-    case = run(
-        args.dataset_dir,
-        out=args.out,
-        log=args.log,
-        no_llm=args.no_llm,
-        max_leads=args.max_leads,
-        max_steps=args.max_steps,
-        submission=args.submission,
-        report=args.report,
-        seed=args.seed,
+    parser.add_argument(
+        "--replay",
+        default=None,
+        help="rebuild a case file from a stored run's step log (.jsonl) or case file "
+        "(.json) without the network; never constructs an LLM",
     )
+    args = parser.parse_args(argv)
+    if args.replay:
+        case = replay(
+            args.replay,
+            out=args.out,
+            submission=args.submission,
+            report=args.report,
+            seed=args.seed,
+        )
+    else:
+        if not args.dataset_dir:
+            parser.error("a dataset_dir is required unless --replay is given")
+        case = run(
+            args.dataset_dir,
+            out=args.out,
+            log=args.log,
+            no_llm=args.no_llm,
+            max_leads=args.max_leads,
+            max_steps=args.max_steps,
+            submission=args.submission,
+            report=args.report,
+            seed=args.seed,
+        )
     print(json.dumps(case, ensure_ascii=False, indent=2))
     print(f"wrote {args.out}")
     return 0

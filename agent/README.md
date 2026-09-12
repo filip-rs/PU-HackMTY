@@ -31,6 +31,11 @@ All are run as `python -m agent.<module>`:
 - `python -m agent.investigate <estate> [--out case_file.json] [--log runs/T.jsonl] [--submission submission.json] [--report report.html] [--seed N] [--max-leads 12] [--max-steps 12] [--no-llm]`
   — `<estate>` is a legacy dataset dir, a judges' `estate.db` or a judges' CSV dir. `--submission` defaults to
   `submission.json` next to `--out` and `--report` to `report.html`; pass `""` to skip either.
+- `python -m agent.investigate --replay <log.jsonl | case_file.json> [--out case_file.json] [--submission submission.json] [--report report.html]`
+  — rebuild the case file, submission and report from a stored run's step log, **with the network off**:
+  run the investigation, then replay it as `--replay runs/T.jsonl` (or `--replay case_file.json`, which names its
+  own log). It never constructs an `LLM` and re-validates every finding through the guard, so a tampered log drops
+  the offending finding and the run still exits 0. `run_metadata` copies the original numbers and adds `replayed_from`.
 - `python -m agent.submit <estate> <case_file.json> [--log run.jsonl] [--seed N] [--out submission.json]`
   — rebuild the judges' JSON from a case file that already exists.
 - `python -m agent.leads <dataset_dir> [--json] [--top N]`
