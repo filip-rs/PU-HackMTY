@@ -1,9 +1,9 @@
-# Issue queue — paste each into GitHub. Label as shown.
+# Issue queue — mirror of the GitHub issues (filed 2026-09-11 as #1–#18). GitHub is the source of truth.
 
 ## Foundation (do first, by humans / Claude Code)
 
 **#1 Repo skeleton + CI** `needs-human`
-Add AGENTS.md, ci.yml, data_estate/ from the zip, freeze out/company_42. DoD: CI green on main.
+Add AGENTS.md, ci.yml, data_estate/ from the zip, freeze out/company_42. DoD: CI green on master.
 
 **#2 Loader module `agent/data.py`** `cc`
 Load a dataset directory into pandas frames with typed columns (dates, floats). Expose `load(path) -> Dataset`.

@@ -43,7 +43,7 @@ agent/detectors.py             cheap rules → leads (EFOS match, no receipt, du
 agent/investigate.py           for each lead: hypothesis → tool calls → accuse | drop (with reason)
         │   uses agent/tools.py  (query_ledger, get_invoices, get_bank_txns, trace_flow,
         │                         check_69b, get_receipts, get_employee)
-        │   LLM: Ollama on cluster (14B), cached; Gemini free tier as fallback only
+        │   LLM: open-weight model on the HPC cluster via .env (OpenAI-compatible); no other provider sees data
         │
 agent/guard.py                 every evidence ID must exist; rule must be on allow-list
         │
@@ -56,7 +56,7 @@ demo/                          live trace UI reads the agent's step log
 
 | Hours | Milestone | Done when |
 |---|---|---|
-| 0–1 | Repo skeleton, CI, dataset frozen, issues filed, Hermes running | CI green on `main`; Hermes has opened its first PR |
+| 0–1 | Repo skeleton, CI, dataset frozen, issues filed, Hermes running | CI green on `master`; Hermes has opened its first PR |
 | 1–4 | Loader (#2), contract test (#3), tool layer (#12) | `pytest` green; tools return real rows from company_42 |
 | 4–12 | Investigation loop (#13), detectors merged as Hermes delivers | `score.py` on company_42: recall ≥ 0.75, penalty 0 |
 | 12–24 | Hardening: batch eval over 10 seeds, evidence guard (#14), drop-reasons quality | mean recall ≥ 0.8, penalty 0 on every seed |
@@ -85,7 +85,7 @@ Overnight (h12–h24): Hermes works the queue. Morning: review its PRs first thi
 
 | Risk | Mitigation |
 |---|---|
-| LLM rate limits / outage on demo day | Ollama local, response cache, Gemini only as fallback. Test the fallback once. |
+| Cluster unreachable on demo day | `scripts/check_llm.py` from the venue the night before and again pre-demo; response cache; SSH tunnel ready. |
 | Agent hallucinates evidence | Guard (#14) rejects any ID not in the dataset before it reaches the case file. |
 | Accuses a decoy on stage | Batch eval must show penalty 0 across ≥10 seeds before freeze. |
 | Hermes PR breaks something | CI required; humans merge; Hermes can't touch `agent/` or the frozen dataset. |
