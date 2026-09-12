@@ -63,7 +63,7 @@ def check_tools(env: dict[str, str]) -> int:
         "tools": [ADD_TOOL],
         "tool_choice": "auto",
         "temperature": 0,
-        "max_tokens": 512,  # headroom for reasoning models that think before calling the tool
+        "max_tokens": 4096,  # headroom for reasoning models that think before calling the tool
     })
     message = res["choices"][0]["message"]
     calls = message.get("tool_calls") or []
@@ -104,7 +104,7 @@ def main() -> int:
         res = request(env, "/chat/completions", {
             "model": env["LLM_MODEL"],
             "messages": [{"role": "user", "content": "Reply with the single word OK."}],
-            "max_tokens": 512,  # reasoning models burn tokens before content; 8 made content come back null
+            "max_tokens": 4096,  # reasoning models burn tokens before content; 8 made content come back null
             "temperature": 0,
         })
         message = res["choices"][0]["message"]

@@ -518,7 +518,10 @@ def _llm_loop(
         steps = 0
         first = True
         while not decision_made and steps < max_steps:
-            reply = llm.chat(messages, tools=all_tools, tool_choice="auto", max_tokens=1024)
+            # generous completion budget: reasoning models burn tokens on
+            # reasoning_content first, and a truncated record_finding call loses
+            # scheme_type/rule and gets rejected by the guard
+            reply = llm.chat(messages, tools=all_tools, tool_choice="auto", max_tokens=8192)
             if first:
                 rec.emit(
                     "hypothesis",

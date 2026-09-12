@@ -177,7 +177,9 @@ class LLM:
         raise RuntimeError("unreachable: all LLM retries exhausted")
 
     def chat(self, messages, tools: list[dict] | None = None, *, tool_choice: str | dict = "auto",
-             max_tokens: int = 1024) -> Reply:
+             max_tokens: int = 8192) -> Reply:
+        # generous: reasoning models burn completion tokens on reasoning_content
+        # before the answer starts, so a tight cap makes content come back null
         key = self._cache_key(messages, tools, tool_choice, max_tokens)
 
         if self._cache_enabled() and self.cache_dir is not None:
@@ -210,7 +212,7 @@ class FakeLLM:
         self.calls: list[dict] = []
 
     def chat(self, messages, tools: list[dict] | None = None, *, tool_choice: str | dict = "auto",
-             max_tokens: int = 1024) -> Reply:
+             max_tokens: int = 8192) -> Reply:
         self.calls.append(
             {"messages": messages, "tools": tools, "tool_choice": tool_choice, "max_tokens": max_tokens}
         )
