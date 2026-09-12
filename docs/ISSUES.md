@@ -34,15 +34,33 @@
 | #43 | CLOSED | `hermes-ok` | Decoy-surfacing detectors: detect_name_twin_69b, detect_shared_supplier_address, detect_cash_payments | #50 (merged) |
 | #44 | CLOSED | `hermes-ok` | Lead aggregation and ranking agent/leads.py (docket per entity, scheme_hint, CLI) | #52 (merged) |
 | #45 | CLOSED | `hermes-ok` | ruff check in CI + fix the 3 existing lint errors | #48 (merged) |
-| #65 | OPEN | `hermes-ok` | agent/guard.py: ledger entry IDs in evidence are set aside, not a rejection |  |
-| #66 | OPEN | `hermes-ok` | agent/investigate.py: feed guard rejections back to the model, then fall back to the deterministic finding |  |
-| #67 | OPEN | `hermes-ok` | Streamed step log + docs/STEP_LOG.md contract + agent/steplog.py validator + agent/README.md refresh |  |
+| #65 | CLOSED | `hermes-ok` | agent/guard.py: ledger entry IDs in evidence are set aside, not a rejection | #74 (merged) |
+| #66 | CLOSED | `hermes-ok` | agent/investigate.py: feed guard rejections back to the model, then fall back to the deterministic finding | #76 (merged) |
+| #67 | CLOSED | `hermes-ok` | Streamed step log + docs/STEP_LOG.md contract + agent/steplog.py validator + agent/README.md refresh | #77 (merged) |
 | #68 | OPEN | `hermes-ok` | api/server.py: stdlib HTTP + SSE server so the frontend can start runs and stream the step log |  |
 | #69 | OPEN | `hermes-ok` | agent/clear.py: replace canned drop reasons with checks that cite records (or admit they cannot) |  |
 | #70 | OPEN | `hermes-ok` | agent/investigate.py: escalate unverified weak leads to the model; 'other' findings become a suspicious tier in not_pursued |  |
 | #71 | OPEN | `hermes-ok` | agent/investigate.py: investigate units concurrently (--workers) to keep a cold LLM run under 30 s |  |
 | #72 | OPEN | `cc` | LLM-mode batch evaluation on 10 unseen seeds: docs/eval tables + LEARNINGS entry |  |
-| #73 | OPEN | `cc` | docs: PLAN.md refresh, HERMES_BRIEF.md for auto-merge, demo/sample_trace.jsonl, issue queue cleanup |  |
+| #73 | CLOSED | `cc` | docs: PLAN.md refresh, HERMES_BRIEF.md for auto-merge, demo/sample_trace.jsonl, issue queue cleanup | #75 (merged) |
+| #78 | OPEN | `cc` | AGENTS.md + README: judges' estate as input contract, submission.json as output contract, five scheme types |  |
+| #79 | OPEN | `cc` | agent/data.py: load a judges' estate (SQLite .db or CSV dir per estate_schema.sql) into Dataset |  |
+| #80 | OPEN | `codex` | generate.py --format judges: export estates to the judges' schema (SQLite + CSV) with judges'-shape ground truth; freeze estate_42 |  |
+| #81 | OPEN | `codex` | generate.py: plant threshold_splitting and revenue_inflation; add same-bank-institution and fixed-fee-contract decoys |  |
+| #82 | OPEN | `hermes-ok` | detect_threshold_splitting(ds): invoice clusters just under an approval limit |  |
+| #83 | OPEN | `hermes-ok` | detect_revenue_inflation(ds): sales booked as revenue that were never collected or were cancelled without reversal |  |
+| #84 | OPEN | `hermes-ok` | Judge-shape signatures: kickback without address, round-trip 2-hop fallback, scheme_hints as a list |  |
+| #85 | OPEN | `cc` | agent/tools.py: judge-estate aware tools (RFC ids, purchase orders, contracts, trace_flow over third-party legs) |  |
+| #86 | OPEN | `codex` | score.py + eval_batch.py: judges' ground-truth shape, false-accusation rate, 2% peso reconciliation, results_table.csv |  |
+| #87 | OPEN | `cc` | guard: 2% per-table reconciliation to cited exhibits, exhibit policy per rule, confidence tier |  |
+| #88 | OPEN | `cc` | agent/submit.py: write submission.json per submission_schema.json; vendor validate_format.py; run it in CI |  |
+| #89 | OPEN | `hermes-ok` | run_metadata: count LLM calls and tokens in agent/llm.py, price constants, cost in the step log |  |
+| #90 | OPEN | `hermes-ok` | agent/report.py: the judges' five-section case file with a rendered money-trail diagram (Markdown + self-contained HTML) |  |
+| #91 | OPEN | `hermes-ok` | agent/challenge.py: adversarial review that tries to break every finding before it is printed |  |
+| #92 | OPEN | `hermes-ok` | Entangled schemes: one entity in two findings, no double-counting, declined-leads bookkeeping |  |
+| #93 | OPEN | `hermes-ok` | --replay: rebuild case file, submission and report from a stored run with the network disabled |  |
+| #94 | OPEN | `hermes-ok` | agent/clear.py on judge estates: PO, contract, same-bank-institution and cancelled-invoice checks; tool_calls_made and closed_by |  |
+| #95 | OPEN | `hermes-ok` | Leak hygiene: ground_truth string check under agent/, hypothesis log line names its detectors |  |
 
 ---
 
@@ -1342,7 +1360,7 @@ With every detector merged, `run_all` yields 130 leads over 19 entities (plus th
 - [ ] `ruff check .` exits 0 on the branch; CI runs it and is green
 - [ ] `python -m pytest -q` green
 
-## #65 agent/guard.py: ledger entry IDs in evidence are set aside, not a rejection  `hermes-ok`  OPEN
+## #65 agent/guard.py: ledger entry IDs in evidence are set aside, not a rejection  `hermes-ok`  CLOSED
 
 ## Goal
 In LLM mode the model calls `query_ledger` a lot (35 of the 206 tool calls in the logged runs under `runs/`) and then cites the ledger `entry_id`s it saw (`GL00652`, `GL02894`, `GL03014`, ...) as evidence in `record_finding`. The case-file contract only accepts invoice UUIDs, `TX*`, `CP*` and `GR*` (`Dataset.all_record_ids()` in `agent/data.py`), so `validate_case_file` reports `findings[0].evidence: GL03014 not in dataset` and `agent/guard.py` rejects the whole finding. The lead is then dropped and recall on company_42 falls from 4/4 to 3/4 (see `runs/20260912T175005Z.jsonl`, entity S00017: the duplicate-payment finding was correct in every other respect).
@@ -1372,7 +1390,7 @@ Facts to rely on: `GL00652` exists in `data_estate/out/company_42/ledger.csv`; l
 - [ ] `python -m agent.guard data_estate/out/company_42 /tmp/f.json` where `f.json` is the reference duplicate-payment finding plus `"GL00652"` prints `ACCEPTED` and the narrative shows the ledger id
 - [ ] Every existing guard test passes unchanged
 
-## #66 agent/investigate.py: feed guard rejections back to the model, then fall back to the deterministic finding  `hermes-ok`  OPEN
+## #66 agent/investigate.py: feed guard rejections back to the model, then fall back to the deterministic finding  `hermes-ok`  CLOSED
 
 ## Goal
 Today a `record_finding` that the guard rejects ends the lead: `_llm_loop` in `agent/investigate.py` sets `decision_made = True` and the entity lands in `not_pursued` with the guard's reasons as the drop reason. Across the seven logged LLM runs on company_42 (`runs/*.jsonl`) that turned a 4/4 dataset into 1/4, 1/4, 3/4, 3/4, 3/4, 4/4, 4/4, while `--no-llm` scores 4/4 every time (`test_no_llm_scores`). The guard's reasons are precise (`amount_mxn 1044000.00 is not within 25% of the recomputed 2070600.00`, `evidence GL03014 not in dataset`), which is exactly what the model needs to fix its call. And for a unit that carries a scheme signature, the deterministic builder `_build_finding` (the `--no-llm` path) already produces a guard-verified finding; when the model cannot, the loop should use that finding and say so in the log, not drop the lead.
@@ -1406,7 +1424,7 @@ Depends on #65 (ledger IDs in evidence no longer cause a rejection).
 - [ ] `python -m agent.investigate data_estate/out/company_42 --no-llm --out /tmp/a.json` produces the same case file as before this change
 - [ ] A human with `.env` runs `python -m agent.investigate data_estate/out/company_42 --out /tmp/c.json` and `python -m data_estate.score data_estate/out/company_42 /tmp/c.json` shows `results_recall: 1.0` and `judgment_penalty: 0` (Hermes: note this in the PR body as "not run, no .env")
 
-## #67 Streamed step log + docs/STEP_LOG.md contract + agent/steplog.py validator + agent/README.md refresh  `hermes-ok`  OPEN
+## #67 Streamed step log + docs/STEP_LOG.md contract + agent/steplog.py validator + agent/README.md refresh  `hermes-ok`  CLOSED
 
 ## Goal
 A teammate is building the frontend separately, outside this repo, against the JSONL step log that `agent.investigate` writes. Today the only spec is the docstring of `agent/investigate.py` plus the superseded UI issue #26, `agent/README.md` still says "planned modules ... detectors.py", and, the real blocker, **the log is written only at the end of the run** (`_write_log` runs after `run_end`), so nothing can tail it live. This issue makes the log a stream, writes the contract down once, and adds a test that fails when the writer drifts from it.
@@ -1627,7 +1645,7 @@ The pitch needs the "on records it has never seen" number in LLM mode, and the g
 - [ ] LEARNINGS.md entry
 - [ ] Gate met (mean recall ≥ 0.8, no penalties, no findings on clean seeds) or a follow-up issue filed for every failure
 
-## #73 docs: PLAN.md refresh, HERMES_BRIEF.md for auto-merge, demo/sample_trace.jsonl, issue queue cleanup  `cc`  OPEN
+## #73 docs: PLAN.md refresh, HERMES_BRIEF.md for auto-merge, demo/sample_trace.jsonl, issue queue cleanup  `cc`  CLOSED
 
 ## Goal
 The plan and the Hermes brief predate the investigation loop, the LLM runs and the decision to build the frontend outside this repo. Refresh them so the queue and the docs agree.
@@ -1643,3 +1661,598 @@ The plan and the Hermes brief predate the investigation loop, the LLM runs and t
 ## Definition of done
 - [ ] `python -m pytest -q` green
 - [ ] Every open issue is labelled and, where it depends on another, says `Depends on #n`
+
+## #78 AGENTS.md + README: judges' estate as input contract, submission.json as output contract, five scheme types  `cc`  OPEN
+
+## Goal
+The judges' pack (`docs/SPEC_GAP.md`) changes three contracts at once: what we read, what we write, and the scheme enum. Every agent reads AGENTS.md first, so it must say so before the code changes land, or Hermes will refuse the schema work under rule 5.
+
+## Spec
+Edit `AGENTS.md`:
+- **Layout:** add `data_estate/out/estate_42/` (frozen judge-shaped export, once #80 lands), `scripts/judges/` (vendored `validate_format.py`), `agent/submit.py`, `agent/challenge.py`.
+- **Rule 5** becomes: "The *input* contract is the judges' `estate_schema.sql` (SQLite `.db` or CSV dir) **and** our legacy CSV layout; the *output* contract is the judges' `submission_schema.json` plus our internal case file. Changes to either need an issue labelled `needs-human`." Keep the rest.
+- **Rule 2** adds: "the string `ground_truth` must not appear anywhere under `agent/` (judges grep for it)".
+- **Scheme types:** two lists. Judges' (the only ones a submission may use): `phantom_vendor`, `kickback`, `round_tripping`, `threshold_splitting`, `revenue_inflation`. Internal (detectors, leads, rules): `efos_fake_supplier`, `kickback_shell`, `round_trip_sales`, `duplicate_invoice_payment`, `threshold_splitting`, `revenue_inflation`, `other`, with the mapping table from `docs/SPEC_GAP.md` and the note that `duplicate_invoice_payment` is reported as a control observation, never a finding.
+- **How to run things:** add `python -m agent.investigate <estate.db|dir> --out case_file.json --submission submission.json --report report.html` (flags land in #88 and #90), `python scripts/judges/validate_format.py --submission submission.json --estate estate.db`, and `python -m data_estate.generate --seed 7 --format judges --out data_estate/out/estate_7`.
+- **Entity ids:** on judge estates entity ids are `RFC:<rfc>` and `EMP:<id>`; on legacy datasets `S*/C*/E*`. Detectors must never assume a prefix.
+
+Edit `README.md`: the "Setup" and "Everyday commands" blocks get the same commands; add a "Judges' pack" paragraph linking `docs/SPEC_GAP.md` and naming the tuning seeds (42, 101–110, 201–205, 301–306) and the reporting seeds (901–910, never run by hand before the eval).
+
+Update `docs/HERMES_BRIEF.md` "Never" line: add "cite a scheme type outside the internal list".
+
+## Definition of done
+- [ ] AGENTS.md, README.md, docs/HERMES_BRIEF.md updated as above; `scripts/sync_issues.py --check` still passes
+- [ ] No code changes in this PR
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #79 agent/data.py: load a judges' estate (SQLite .db or CSV dir per estate_schema.sql) into Dataset  `cc`  OPEN
+
+## Goal
+Judges score us on estates *they* generate to `estate_schema.sql`, handed to us as a path at run time. Today `agent.data.load` reads only our CSV layout, so on a judge estate every detector finds nothing. This issue makes `load(path)` accept three inputs and return the same `Dataset` the detectors, tools and guard already use, so the whole pipeline works on judge data without touching the detectors.
+
+## Spec
+`agent.data.load(path)` auto-detects:
+1. **Legacy CSV dir** (has `suppliers.csv`): unchanged.
+2. **Judges' SQLite** (`path` is a file, `sqlite3` opens it, table `vendors` exists).
+3. **Judges' CSV dir** (has `vendors.csv`): same eight tables as CSVs.
+
+Read with `sqlite3` (stdlib) into pandas via `pd.read_sql_query` with every column cast to `str` first (`keep_default_na` semantics: `None` → `""`), then apply the existing date/float conversions. Add to `Dataset`:
+```python
+purchase_orders: pd.DataFrame = <empty>   # po_id, vendor_rfc, date, amount, requester, approver, description
+contracts: pd.DataFrame = <empty>         # contract_id, vendor_rfc, start_date, value, scope_text
+record_table: dict[str, str] = {}         # record id -> judges' source_table name ("invoices", "bank_txns", "purchase_orders", "contracts", "ledger", "vendors", "employees", "efos_list")
+source_format: str = "legacy" | "judges"
+```
+(dataclass fields with defaults go last; legacy loads leave them empty/`"legacy"`).
+
+### Mapping (judges' table → our frame)
+- **Company identity:** `company_rfc` = the `receiver_rfc` that appears on the most invoices whose issuer is a vendor; `company_clabe` = the most frequent `from_clabe` among `bank_txns` whose `to_clabe` is a vendor `bank_clabe`. `ds.company = {"name": company_rfc, "rfc": company_rfc, "clabe": company_clabe, "city": ""}`.
+- **vendors → suppliers:** `supplier_id = "RFC:" + rfc`, `name = legal_name`, `rfc`, `street = address`, `city = ""`, `clabe = bank_clabe`, `account_holder = legal_name`, `category`, `onboarded = registered_date`, `approved_by` = `emp_id` of the employee whose `name` equals the most frequent `purchase_orders.approver` for that vendor (else `""`), `status = "activo"`.
+- **invoices → invoices:** `uuid`, `tipo = "recibida" if receiver_rfc == company_rfc else "emitida"`, `serie = folio = ""`, `fecha = fecha_timbrado = issue_date`, `rfc_emisor = issuer_rfc`, `rfc_receptor = receiver_rfc`, `nombre_*` from vendors by rfc else `""`, `uso_cfdi`, `forma_pago`, `metodo_pago`, `clave_prod_serv = ""`, `descripcion = concepto_text`, `cantidad = 1.0`, `valor_unitario = subtotal`, `subtotal`, `iva`, `total`, `moneda = "MXN"`, `po_number` = matched PO id or `""`, `counterparty_id = "RFC:" + (issuer_rfc if recibida else receiver_rfc)`, `approved_by` = emp_id of the PO approver (else the `ledger.approver` on the invoice's GL rows, else `""`). Keep an extra column `status` (`vigente|cancelado`).
+- **PO ↔ invoice match:** same `vendor_rfc`, `abs(po.amount - invoice.total) <= 0.01`, `po.date <= issue_date + 30 days`; earliest unmatched PO wins; one PO per invoice.
+- **purchase_orders → goods_receipts (proxy):** one row per matched invoice: `receipt_id = po_id`, `po_number = po_id`, `supplier_id`, `invoice_uuid`, `fecha = po.date`, `descripcion = po.description`, `cantidad = 1.0`, `received_by` = approver's emp_id or name, `warehouse = ""`. Rationale: in the judges' schema a PO is the only deliverable trail; `record_table[po_id] = "purchase_orders"` so exhibits cite the right table. Document this proxy in the module docstring.
+- **bank_txns → bank_transactions (company side) and counterparty_bank (third-party legs):** if `from_clabe == company_clabe`: `direction = "out"`, `counterparty_clabe = to_clabe`; if `to_clabe == company_clabe`: `direction = "in"`, `counterparty_clabe = from_clabe`; `account_clabe = company_clabe`, `counterparty_name` from vendors/employees by CLABE else `""`, `reference`, `invoice_uuid` recovered by (a) any invoice `uuid` substring in `reference`, else (b) the vendor/customer with that CLABE + exact `total == amount` + `date >= issue_date`, earliest unpaid invoice wins, else `""`. Keep an extra column `channel`. Rows where neither side is the company become `counterparty_bank` rows: `record_id = txn_id`, `entity_name`/`entity_clabe = from side`, `direction = "out"`, `amount`, `counterparty_name`/`counterparty_clabe = to side`, `fecha = date`, `reference`. `record_table[txn_id] = "bank_txns"` for both.
+- **employees → employees:** `employee_id = emp_id` (already `EMP:0001`), `name`, `rfc = ""`, `role`, `home_street = home_city = ""`, `personal_clabe = bank_clabe`.
+- **Customers:** distinct `receiver_rfc` on `emitida` invoices → `customer_id = "RFC:" + rfc`, `name` from vendors if the rfc is also a vendor else `""`, `clabe` = the `from_clabe` of inbound payments linked to that customer's invoices (most frequent) else `""`.
+- **ledger → ledger:** `entry_id = str(entry_id)`, `fecha = date`, `account_code`, `account_name`, `debit`, `credit`, `descripcion = description`, `invoice_uuid`, `txn_id = ""`; keep extra columns `cost_center`, `approver`.
+- **efos_list → efos_69b:** `rfc`, `nombre = legal_name`, `situacion = status.strip().capitalize()` (`definitivo` → `Definitivo`), `fecha_publicacion = publication_date`.
+- **contracts → contracts:** as is; `record_table[contract_id] = "contracts"`; `all_record_ids()` includes contract ids and PO ids.
+
+CLABEs are 18-digit strings with leading zeros; never cast to numbers. Dates that fail to parse become `NaT` and are logged once, never raise.
+
+## Test: `tests/test_load_judges.py` with fixture `tests/fixtures/judges_mini/*.csv`
+Hand-written mini estate (commit it): company RFC `EMP920101AB1`, CLABE `000000000000000099`; 2 vendors (`AAAA010101AA1` on efos_list as `definitivo`, `BBBB020202BB2` with a PO and a contract); 3 invoices (2 purchases, one per vendor, plus 1 sale from the company to `CCCC030303CC3`); 5 bank_txns: payment of each purchase (reference contains the invoice uuid for one, only the amount for the other), the sale's collection, one payroll transfer, and one **third-party** leg from vendor A's CLABE to employee `EMP:0001`'s CLABE; 1 PO matching vendor B's invoice; 1 contract for vendor B; 2 employees; 1 efos row. The test builds `mini.db` from the CSVs with `sqlite3` in `tmp_path` and loads both the dir and the db:
+- both loads give identical frames (`DataFrame.equals` after sorting)
+- `ds.company["rfc"] == "EMP920101AB1"`, `ds.company["clabe"] == "000000000000000099"`
+- suppliers has 2 rows with ids `RFC:AAAA010101AA1`, `RFC:BBBB020202BB2`; customers has 1 row `RFC:CCCC030303CC3`
+- both purchase payments carry the right `invoice_uuid` (one via reference, one via amount+CLABE); the payroll row has `invoice_uuid == ""`
+- `counterparty_bank` has exactly 1 row (the vendor→employee leg) with `direction == "out"`; `bank_transactions` has 4
+- `goods_receipts` has 1 row with `receipt_id == <po_id>`; `ds.record_table[<po_id>] == "purchase_orders"`, `ds.record_table[<txn_id>] == "bank_txns"`
+- `efos_69b.situacion.iloc[0] == "Definitivo"`; `employees.personal_clabe` populated; `source_format == "judges"`
+- `run_all(ds)` and `aggregate(ds)` run without error and `detect_efos` returns `RFC:AAAA010101AA1`
+- legacy load of company_42 is byte-for-byte unchanged (`tests/test_loader.py` untouched and green)
+
+## Definition of done
+- [ ] `agent/data.py` as specified, fixture committed, `tests/test_load_judges.py` green, all existing tests green
+- [ ] `python -m agent.investigate tests/fixtures/judges_mini --no-llm` runs and writes a case file
+- [ ] Module docstring documents the PO-as-receipt proxy and the payment-link heuristic
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #80 generate.py --format judges: export estates to the judges' schema (SQLite + CSV) with judges'-shape ground truth; freeze estate_42  `codex`  OPEN
+
+## Goal
+Our held-out numbers must be measured on the same shape the judges use, and the judges' validator needs an `--estate my_estate.db`. Export our generator's richer estate to `estate_schema.sql`, write ground truth in `ground_truth_schema.json` shape, and freeze one export as `data_estate/out/estate_42`.
+
+## Spec
+`python -m data_estate.generate --seed 42 --format judges --out data_estate/out/estate_42` writes:
+```
+estate_42/estate.db          SQLite, the eight tables of estate_schema.sql, exact column names and order
+estate_42/csv/<table>.csv    same content as CSV (vendors.csv, invoices.csv, ledger.csv, bank_txns.csv, purchase_orders.csv, contracts.csv, employees.csv, efos_list.csv)
+estate_42/hidden/ground_truth.json   judges' shape (below)
+estate_42/hidden/README
+```
+`--format legacy` (default) keeps today's output byte-identical (company_42 stays frozen).
+
+### Table mapping (from `Estate`)
+- **vendors:** one per supplier: `rfc`, `legal_name = name`, `registered_date = onboarded`, `address = f"{street}, {city}"`, `bank_clabe = clabe`, `category`, `contact_email = <slug>@<slug>.mx` (deterministic from name).
+- **invoices:** `uuid`, `issuer_rfc = rfc_emisor`, `receiver_rfc = rfc_receptor`, `issue_date = fecha`, `subtotal`, `iva`, `total`, `concepto_text = descripcion`, `uso_cfdi`, `forma_pago`, `metodo_pago`, `status = "vigente"`.
+- **ledger:** `entry_id` = integer (strip `GL` and leading zeros), `date = fecha`, `account_code`, `account_name`, `debit`, `credit`, `description = descripcion`, `invoice_uuid`, `cost_center` = `"CC-100 Produccion"` for materia_prima/refacciones/consumibles, `"CC-200 Administracion"` otherwise, `approver` = name of the invoice's `approved_by` employee on invoice rows, `""` on payment/payroll rows.
+- **bank_txns:** company-side rows from `bank_transactions`: `txn_id`, `date = fecha`, `from_clabe/to_clabe` from `direction` (out: company → counterparty), `amount`, `reference = f"Pago factura {uuid}"` / `f"Cobro factura {uuid}"` / `"NOMINA QUINCENAL"` so the invoice link is recoverable, `channel = "efectivo"` when the invoice's `forma_pago == "01"` else `"SPEI"`. Third-party legs from `counterparty_bank` rows with `direction == "out"` only (the `in` rows mirror our own payments and would duplicate): `txn_id = record_id`, `from_clabe = entity_clabe`, `to_clabe = counterparty_clabe`, `reference`, `channel = "SPEI"`.
+- **purchase_orders:** one per purchase invoice that has a goods receipt **or** whose supplier is honest (not in `truth["schemes"]`) and category is a service: `po_id = po_number`, `vendor_rfc`, `date = invoice fecha - rng(1..10) days`, `amount = invoice total`, `requester` = a random non-buyer employee name (seeded), `approver` = name of `approved_by`, `description = descripcion`. Planted phantom, kickback and round-trip invoices get **no PO**: that is their tell in the judges' world.
+- **contracts:** one per `renta_util` supplier and one for the shared-address freight decoy: `contract_id = "CTR-" + supplier_id`, `vendor_rfc`, `start_date` = onboarded, `value` = 12 × mean invoice total, `scope_text` (`"Contrato marco, cuota mensual fija"` / `"Contrato de fletes, carta porte por viaje"`).
+- **employees:** `emp_id = "EMP:" + employee_id[1:]` (`E00002` → `EMP:00002`), `name`, `role`, `bank_clabe = personal_clabe`, `hire_date` = seeded date in 2015–2024.
+- **efos_list:** rows with `situacion in (Presunto, Definitivo)` only, `status` lowercased, `legal_name = nombre`, `publication_date`.
+
+### Ground truth (judges' shape)
+`{"seed", "company_rfc", "schemes": [{"scheme_id": "S<n>_<type>_<k>", "type": <judges' enum via SPEC_GAP mapping>, "entities": ["RFC:...", "EMP:..."], "supporting_invoices": [...], "supporting_txns": [...], "peso_amount", "difficulty": easy|medium|hard}], "decoys": [{"entity": "RFC:...", "signal": <detector name>, "why_innocent", "invoices": [...]}]}`. Mapping: `efos_fake_supplier→phantom_vendor` (easy), `kickback_shell→kickback` (medium), `round_trip_sales→round_tripping` (hard). `duplicate_invoice_payment` is **not** a judges' scheme: write it under an extra key `"control_observations": [...]` so `score.py` (#86) can still credit or ignore it. Also keep our internal truth at `hidden/ground_truth_internal.json` for the legacy scorer.
+
+Kickback in this schema is provable only by the third-party leg (shell CLABE → buyer CLABE) and the approver on PO/ledger; the home-address tell is gone by construction. Nothing in the generator changes for that; the export simply does not carry addresses for employees.
+
+### Freeze
+`data_estate/out/estate_42/` committed; `tests/test_frozen_dataset.py` gains a second digest for it. `.gitignore` already keeps other exports out (`data_estate/out/*` minus the frozen ones: add `!data_estate/out/estate_42/`).
+
+## Test: `tests/test_export_judges.py`
+- Export seed 42 to `tmp_path`; open `estate.db` with `sqlite3`: the eight tables exist with exactly the columns of `estate_schema.sql` in order; every CSV has the same row count as its table.
+- Referential integrity: every `invoices.issuer_rfc` that is not the company is in `vendors`; every `purchase_orders.vendor_rfc` and `contracts.vendor_rfc` in `vendors`; every `ledger.invoice_uuid` non-empty value in `invoices`; every `bank_txns` row has 18-digit CLABEs on both sides.
+- Counts on seed 42: 42 vendors, 597 invoices, 16 employees, 34 efos rows (17 Presunto + 17 Definitivo), bank_txns = 612 + 11 third-party legs = 623, purchase_orders = 357 receipts + honest service invoices (compute in-test from the legacy estate), contracts ≥ 3.
+- Ground truth: three schemes with judges' types, ids prefixed, `peso_amount` equal to the internal amounts, five decoys, `control_observations` has one entry.
+- `--format legacy` output for seed 42 is byte-identical to `company_42` (diff in-test).
+
+## Definition of done
+- [ ] Export works for any seed and `--n`; `estate_42` frozen with digest; all tests green
+- [ ] `data_estate/README.md` documents `--format judges` and the table mapping in one table
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #81 generate.py: plant threshold_splitting and revenue_inflation; add same-bank-institution and fixed-fee-contract decoys  `codex`  OPEN
+
+## Goal
+The judges' enum has five scheme types; we plant three. Judge estates can carry "up to all five with ten decoys". Add the two missing schemes and the two decoys that most directly target them, with ground truth, so detectors (#82, #83) have something to find and the eval can measure it.
+
+## Spec
+Approval limits are constants in code (`data_estate/generate.py` and mirrored in `agent/rules.py` by #82):
+```python
+APPROVAL_LIMIT_SUBTOTAL = {"Gerente de Compras": 250_000.0, "Director General": float("inf")}
+```
+Both schemes are selectable by name in `--schemes` (`threshold`, `revenue`) and included in the default list. Internal scheme types: `threshold_splitting`, `revenue_inflation` (same string as the judges' enum).
+
+### `scheme_threshold_splitting`
+- New vendor, category `refacciones`, onboarded in FY, approved by the buyer.
+- 3 clusters at seeded dates ≥ 30 days apart. Each cluster: 3–4 purchase invoices dated within 2 business days, `subtotal` uniformly in `[0.80, 0.98] × 250_000`, descriptions of the same part, each with its own PO approved by the buyer (all under the limit), each paid normally (15–45 days). Goods receipts exist (the goods are real; the fraud is circumventing approval). Cluster sum is 2.4×–3.9× the limit.
+- Ground truth: `type: threshold_splitting`, `entities: [RFC:vendor, EMP:buyer]`, `supporting_invoices` = all cluster invoices, `supporting_txns` = their payments, `peso_amount` = sum of cluster invoice totals, `difficulty: medium`.
+- Legacy rule string for `agent/rules.py` (#82 adds it): `"Fraccionamiento de operaciones para evadir niveles de autorización; LGRA / política interna de compras; CFF Art. 83 (comprobantes) — approval-limit circumvention"`.
+
+### `scheme_revenue_inflation`
+- One fresh customer RFC (not a vendor, not in customers yet), name `Comercial <Last> SA de CV`.
+- 3–5 sales invoices dated in the last 45 days of the FY, subtotals 150k–400k, revenue booked in the ledger (4000/2180/1200 as today), **no bank inflow ever**.
+- 1–2 of them get `status = cancelado` in the export (#80 adds `status` support: an `Invoice.status` field defaulting to `vigente`) while the ledger keeps the revenue (no reversing entry).
+- Ground truth: `type: revenue_inflation`, `entities: [RFC:customer]`, `supporting_invoices`, `supporting_txns: []`, `peso_amount` = sum of those sales totals, `difficulty: medium`.
+- Rule string: `"Ingresos simulados / reconocimiento indebido de ingresos; CFF Art. 69-B / 113 Bis; NIF D-1 (ingresos)"`.
+
+### Decoys (always present, like the existing five)
+- **D6 same bank institution:** an honest goods supplier whose CLABE shares the first 3 digits (bank code) with the buyer's personal CLABE but nothing else; full PO and receipt trail. `signal: detect_kickback_outflow` (it must *not* fire; the decoy exists so the same-bank check in `agent/clear.py` has something to explain). `why_innocent`: "same bank code 0XX, different account; no transfer between the two accounts".
+- **D7 fixed fee under contract:** an honest `servicios` supplier with 12 identical monthly invoices at `0.9 × 250_000` subtotal, a contract in `contracts` with `scope_text = "Contrato marco, cuota mensual fija"`, POs for each. Looks like threshold splitting (same amount just under the limit) but the invoices are one per month, not clustered, and the contract explains the amount. `signal: detect_threshold_splitting`.
+
+Both decoys export with their contract/PO trail (#80). The `decoys()` method must keep the five existing decoys byte-identical on seed 42 when the new schemes are **not** selected, so `company_42` stays frozen; the new decoys are added *after* the existing ones and only consume RNG after them.
+
+## Test: `tests/test_generate_new_schemes.py`
+- `Generator(7).build(["threshold", "revenue"])`: truth has exactly those two schemes with the fields above; cluster invoices are within 2 business days per cluster and each `subtotal < 250_000`; every revenue-inflation invoice has no bank txn referencing it; at least one has `status == "cancelado"`.
+- `Generator(42).build(["efos","kickback","roundtrip","duplicate"])` written with `--format legacy` is still byte-identical to `company_42`.
+- Seeds 1–3 with all six schemes pass `data_estate.validate.check` (extend `validate.py`'s naive rules: threshold clusters findable by "≥3 invoices from one vendor within 2 days each ≥ 0.8 × limit"; revenue inflation by "sales invoice with no inbound txn"; decoys D6/D7 must not trip them).
+
+## Definition of done
+- [ ] Both schemes and both decoys generated, validated, exported; tests green; `company_42` unchanged
+
+**Depends on #80** (the `status` column and the export of contracts/POs).
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #82 detect_threshold_splitting(ds): invoice clusters just under an approval limit  `hermes-ok`  OPEN
+
+## Goal
+The judges' `threshold_splitting` type: a vendor's purchases split into several invoices (and POs) each just below an approver's limit so nobody above that approver sees the total.
+
+## Spec
+`agent/detectors/threshold_splitting.py` → `detect_threshold_splitting(ds, *, window_days=2, min_cluster=3, min_ratio=0.80) -> list[dict]`
+1. Limits live in `agent/rules.py` as `APPROVAL_LIMIT_SUBTOTAL = {"Gerente de Compras": 250_000.0, "Director General": float("inf")}` (add it there; a judge will ask to see the file). The limit for an invoice is the limit of the role of its `approved_by` employee (`ds.employees.role`); unknown role → the smallest finite limit.
+2. Take `recibida` invoices; per supplier, sort by `fecha`; group into clusters where consecutive invoices are ≤ `window_days` apart.
+3. Keep clusters with ≥ `min_cluster` invoices where **every** invoice has `subtotal >= min_ratio × limit` and `subtotal < limit`, and the cluster's summed subtotal ≥ limit.
+4. One dict per cluster, sorted by `(entity_id, first_date)`: `entity_id` (supplier), `approver_id`, `approver_role`, `limit`, `n_invoices`, `first_date`, `last_date`, `cluster_subtotal`, `cluster_total_mxn`, `invoice_uuids`, `evidence` = invoice UUIDs + the `txn_id`s that paid them + their PO ids when present (`ds.goods_receipts.receipt_id` for those invoices on judge estates).
+5. Also add the internal scheme to `agent/rules.py`: `R6` with `scheme_types={"threshold_splitting"}`, legal string from #81, `evidence_kinds={"invoice","txn","receipt"}`, amount = sum of `total` of the clustered invoices of the accused supplier (reuse the detector to find them), and add the signature `({"detect_threshold_splitting"}, "threshold_splitting")` to `agent/leads.py` `SIGNATURES` and `STRONG`.
+
+## Data facts (from #81, seed 7 with `threshold`)
+3 clusters of 3–4 invoices, subtotals in `[200k, 245k)`, ≥30 days apart. Decoy D7 has 12 monthly invoices at 225k: never ≥3 within 2 days, so it must not appear. Baseline suppliers have 4–24 invoices at random dates; two within 2 days both in `[200k, 250k)` is possible but a third is not expected; the test asserts no baseline supplier appears on seeds 7, 8, 9.
+
+## Test: `tests/test_detect_threshold_splitting.py`
+Generate seed 7 with `["threshold"]` into `tmp_path` (legacy format) and load it:
+- `{r["entity_id"]}` == `{vendor}` from ground truth; number of rows == number of clusters (3); the union of `invoice_uuids` == `supporting_invoices`
+- `approver_id` == the buyer; every `limit == 250_000.0`
+- D7's supplier id not in the result; `detect_threshold_splitting(ds, min_cluster=99) == []`
+- guard accepts a finding `{scheme_type: "threshold_splitting", accused: [vendor, buyer], rule: "R6", amount_mxn: <sum>, evidence: <all cluster uuids + txns>}`
+
+## Definition of done
+- [ ] Module, rule R6, signature, test green; docstring names the constant and the file it lives in
+
+**Depends on #81.**
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #83 detect_revenue_inflation(ds): sales booked as revenue that were never collected or were cancelled without reversal  `hermes-ok`  OPEN
+
+## Goal
+The judges' `revenue_inflation` type: fictitious sales. In the books this looks like revenue in the ledger with no cash ever arriving, and invoices cancelled after the fact while the revenue entry stays.
+
+## Spec
+`agent/detectors/revenue_inflation.py` → `detect_revenue_inflation(ds, *, grace_days=60, period_end_days=45) -> list[dict]`
+1. `emitida` invoices (`issuer == company`). For each: `collected` = there is a `bank_transactions` row with `direction == "in"` and `invoice_uuid == uuid` (or, when `invoice_uuid` is empty on judge estates, an inbound txn from the customer's CLABE with `amount == total` after `fecha`); `cancelled` = `status == "cancelado"` when the column exists; `revenue_booked` = a ledger row with `invoice_uuid == uuid` and `account_code == "4000"` and `credit > 0`; `reversed` = a ledger row for the uuid with `account_code == "4000"` and `debit > 0`.
+2. Flag an invoice when `revenue_booked` and ((not `collected` and `fecha <= fiscal_year_end - ... `: use "not collected and at least `grace_days` after `fecha` within the data's last date, or issued within `period_end_days` of the last invoice date") or (`cancelled` and not `reversed`)).
+3. Aggregate per customer (`counterparty_id`), one dict per customer sorted by `entity_id`: `entity_id`, `n_invoices`, `n_uncollected`, `n_cancelled_not_reversed`, `first_date`, `last_date`, `total_mxn` (sum of flagged totals), `customer_history` = number of *collected* invoices for that customer (0 for a fresh customer), `invoice_uuids`, `evidence` = flagged invoice UUIDs (no txns exist; that is the point).
+4. `agent/rules.py`: `R7` with `scheme_types={"revenue_inflation"}`, legal string from #81, `evidence_kinds={"invoice"}`, amount = sum of the flagged invoices' `total` for the accused customer. `agent/leads.py`: signature `({"detect_revenue_inflation"}, "revenue_inflation")`, add to `STRONG` **only** when `customer_history == 0 or n_cancelled_not_reversed > 0` (implement as a second detector field the signature can read, or emit the lead only in those cases and a weaker `detect_uncollected_sales` otherwise; pick the simpler and say which).
+
+## Data facts (from #81, seed 7 with `revenue`)
+One fresh customer, 3–5 sales in the last 45 days, none collected, 1–2 cancelled without reversal. Honest customers pay 20–60 days after invoice; sales in the last ~50 days of the FY may legitimately be uncollected at year end (`pay_delay` capped at FY_END means they *are* paid on 12-31 in our generator; on judge estates they may not be). The `customer_history` field is what separates "new customer, nothing ever paid, cancellations" from "regular customer, last invoice still open".
+
+## Test: `tests/test_detect_revenue_inflation.py`
+Generate seed 7 with `["revenue"]` (legacy format, plus `status` column per #80/#81):
+- exactly one row, `entity_id` == the planted customer, `invoice_uuids` ⊇ `supporting_invoices`, `customer_history == 0`, `n_cancelled_not_reversed >= 1`
+- no honest customer appears; `detect_revenue_inflation(ds, grace_days=10_000) ` still returns the cancelled-not-reversed case
+- guard accepts `{scheme_type: "revenue_inflation", accused: [customer], rule: "R7", amount_mxn: <sum>, evidence: <uuids>}`
+
+## Definition of done
+- [ ] Module, rule R7, signature, test green
+
+**Depends on #81.**
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #84 Judge-shape signatures: kickback without address, round-trip 2-hop fallback, scheme_hints as a list  `hermes-ok`  OPEN
+
+## Goal
+On judge estates employees have no address, `bank_txns` may or may not carry third-party legs, and an entity may sit in two schemes ("entangled"). Three small changes so the existing detectors and the docket keep working on that shape.
+
+## Spec
+1. **Kickback signature.** `agent/leads.py` `SIGNATURES`: `kickback_shell` fires on `{"detect_kickback_outflow"}` alone; `detect_employee_address_match` becomes corroboration (keep it in `STRONG`). Add to `detect_kickback_outflow` a field `approver_link: bool` = the supplier's `approved_by` equals the employee receiving the money, and `same_bank_only: bool` = False when a real transfer exists (the same-institution decoy never reaches this detector because it needs a transfer; the check that *explains* the decoy lives in `agent/clear.py`, #94).
+2. **Round-trip 2-hop fallback.** `agent/detectors/round_trip.py`: after the existing 3-hop search, a second pass for outgoing payment `O` with no forward leg: inbound `I` with `direction == "in"`, `I.fecha` within `return_days` of `O.fecha`, `I.amount >= return_min_ratio × O.amount`, and (`I.counterparty_clabe == O.counterparty_clabe` **or** the customer of `I` has the same RFC as the supplier of `O`). Emit the same dict shape with `forward_record = ""`, `via = "direct"` (3-hop rows get `via = "counterparty"`), evidence without the empty id. Deterministic order unchanged.
+3. **Multiple hints.** `agent/leads.py`: `scheme_hints(detectors) -> list[str]` returning every matching signature in `SIGNATURES` order; dossiers carry `scheme_hints: [...]` and keep `scheme_hint = scheme_hints[0] if any else ""` for compatibility. `agent/investigate.py` `_build_units` groups by each hint, so an entity in two schemes yields two units (this is the mechanism #92 completes on the output side; here only the docket changes).
+
+## Test
+- `tests/test_leads.py`: a detector set `{"detect_kickback_outflow"}` → `kickback_shell`; `{"detect_round_trip", "detect_efos"}` → `["efos_fake_supplier", "round_trip_sales"]` from `scheme_hints`; `scheme_hint` still returns the first.
+- `tests/test_detect_round_trip.py`: on company_42 results unchanged (3 rows, all `via == "counterparty"`); on a copy of company_42 with `counterparty_bank.csv` emptied, the 2-hop pass finds the 3 legs with `via == "direct"` (the pipe's CLABE is not the customer's, so this relies on the RFC rule: assert the generator's pipe/customer are different RFCs and therefore expect **0** rows there, and instead build a 3-row synthetic case in the test where the inbound CLABE equals the outbound CLABE).
+- `tests/test_detect_kickback_outflow.py`: `approver_link is True` on company_42.
+- `tests/test_investigate.py`: a dossier with two hints produces two units; company_42 scores unchanged (`1.0 / 0 / 1.0`).
+
+## Definition of done
+- [ ] Three changes, tests green, company_42 and the 10-seed batch unchanged (`scripts/eval_batch.py --seeds 101-105 --no-llm`)
+
+**Depends on #79** (judge-shape frames to exercise) — the code changes themselves do not need it, so start when #79 is merged or open.
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #85 agent/tools.py: judge-estate aware tools (RFC ids, purchase orders, contracts, trace_flow over third-party legs)  `cc`  OPEN
+
+## Goal
+The model's tools must answer the questions the judges will ask on their estates: is there a PO, a contract, what did the approver sign, where did the money go after it left us. Today the tools assume `S*/C*/E*` ids and receipts.
+
+## Spec (add, do not break)
+- Every lookup accepts `RFC:<rfc>` / `EMP:<id>` ids **and** legacy ids; `get_supplier` also accepts a bare RFC.
+- `get_purchase_orders(*, vendor_id: str = "", invoice_uuid: str = "", limit: int = 50) -> list[dict]` from `ds.purchase_orders` (empty list with `note: "no purchase_orders table in this estate"` on legacy datasets).
+- `get_contracts(vendor_id: str) -> list[dict]` from `ds.contracts`, same fallback.
+- `get_supplier(...)` adds `deliverable_trail: {n_invoices, n_with_po, n_with_receipt, n_contracts}` and `approvers: [{employee_id, role, n_invoices}]`; `employee_links` gains `kind = "same_bank"` (first 3 CLABE digits equal, full CLABE different) so the model can *see* and dismiss it.
+- `get_employee(...)` adds `bank_code` (first 3 digits) and `n_transfers_received_from_vendors` (count of `counterparty_bank` rows landing on the employee's CLABE).
+- `trace_flow(clabe, ...)` walks `counterparty_bank` (third-party legs) **and** `bank_transactions`; each hop carries `record_id`, `source_table` from `ds.record_table`, and `returns_to_company`.
+- `get_invoices(...)` rows add `status` (when present), `po_id`, `contract_id` (when a contract covers the vendor), `collected` (for sales) and `days_to_collect`.
+- `TOOL_SCHEMAS` updated; descriptions mention judge ids (`RFC:...`).
+
+## Test: `tests/test_tools.py` additions on `tests/fixtures/judges_mini` (#79) and on company_42
+- `get_supplier("RFC:BBBB020202BB2")["deliverable_trail"]["n_with_po"] == 1`; `get_contracts("RFC:BBBB020202BB2")` has 1 row; `get_purchase_orders(invoice_uuid=<B's invoice>)` has 1 row
+- `get_employee("EMP:0001")["n_transfers_received_from_vendors"] == 1`; `trace_flow(<vendor A clabe>)` returns the vendor→employee hop with `source_table == "bank_txns"`
+- legacy results for existing assertions unchanged; `json.dumps` on every result
+
+## Definition of done
+- [ ] Tools and schemas extended, tests green; the LLM prompt in `agent/investigate.py` lists the two new tools
+
+**Depends on #79.**
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #86 score.py + eval_batch.py: judges' ground-truth shape, false-accusation rate, 2% peso reconciliation, results_table.csv  `codex`  OPEN
+
+## Goal
+Our scorer reads our internal truth and prints our metrics. The judges' pack defines the answer-key shape, the two numbers that matter (recall and false-accusation rate), a 2% peso rule, and a results table with fixed columns. Make our harness speak that language so the slide is a direct export.
+
+## Spec
+`data_estate/score.py`:
+- Accept both truth shapes: internal (`meta` key) and judges' (`company_rfc` key). Normalise to: schemes `[{type (judges' enum), entities (prefixed), supporting_invoices, supporting_txns, peso_amount}]`, decoys `[{entity, signal}]`, `control_observations`.
+- Score a **submission.json** (#88) when given one (detect by `run_metadata` key); keep scoring legacy case files for the old tests. Entity matching on prefixed ids; legacy ids are mapped through the masters when the truth is internal.
+- Output: `schemes_planted`, `schemes_found`, `recall_pct`, `decoys_planted`, `decoys_accused`, `false_accusations` (accused entities in no scheme), `false_accusation_rate_pct` = `100 × (false + decoys_accused) / max(1, n_accused_entities)`, `peso_claimed` (sum of finding amounts), `peso_actual` (sum of found schemes' `peso_amount`), `peso_reconciles` (every finding within 2% of its per-table exhibit sum, computed like `validate_format.py`), `llm_calls`, `mxn_cost`, `wall_clock_s` (from `run_metadata`), plus the old fields for compatibility.
+- A finding counts as found when `scheme_type` matches and ≥1 planted entity is accused and `peso_amount` is within 25% (unchanged tolerance for *recall*; the 2% rule is a separate boolean).
+
+`scripts/eval_batch.py`:
+- `--format judges` generates with `--format judges` (#80), runs the agent on `estate.db`, scores the submission.
+- Writes `results_table.csv` in the exact columns of `student-materials/forensic-auditor/results_table_template.csv` (copy the header verbatim into the script as a constant) plus a `TOTAL` row; `--out` markdown keeps the current table.
+- Refuses seeds 42 and any seed in the tuning list `TUNING_SEEDS = {42, *range(101, 111), *range(201, 206), *range(301, 307)}` when `--report` is passed; `--report` is what produces the slide table on `901-910`.
+
+## Test: `tests/test_score_judges.py`, `tests/test_eval_batch.py` additions
+- Score the frozen `estate_42` (#80) against a hand-built submission that accuses the phantom vendor with correct exhibits: `recall_pct == 100/3` … (one of three), `false_accusation_rate_pct == 0`, `peso_reconciles is True`; add a decoy to `entities` → rate 50, `decoys_accused == 1`.
+- A finding whose exhibits sum to 1.5× its `peso_amount` → `peso_reconciles is False`.
+- `eval_batch --seeds 901-902 --report --no-llm --format judges` writes a CSV whose header equals the template header and has 3 rows (2 seeds + TOTAL); `--seeds 42 --report` exits non-zero.
+
+## Definition of done
+- [ ] Scorer and batch script as above, tests green, `docs/eval/README.md` explains tuning vs reporting seeds
+
+**Depends on #80** and, for scoring submissions, **#88** (score legacy case files until then).
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #87 guard: 2% per-table reconciliation to cited exhibits, exhibit policy per rule, confidence tier  `cc`  OPEN
+
+## Goal
+The judges reconcile `peso_amount` to the **cited** exhibits, per table, within 2%. Our guard checks 25% against a recomputed aggregate, so a finding can pass us and fail them. Move the guard to their rule, and decide per rule which table "carries" the amount.
+
+## Spec
+`agent/rules.py`: each `Rule` gains `counted_table: str` (`"invoices"` for R1, R2, R6, R7; `"invoices"` for R3 counting the **purchase** invoices only; `"bank_txns"` for R4 counting the duplicate payments) and `exhibit_policy: Callable[[finding, ds], list[str]]` that returns the record ids the finding must cite for the amount to reconcile (R1/R2/R6: every counted invoice of the accused suppliers; R3: purchase invoices, and the sales legs are cited through their revenue ledger rows and inbound txns; R4: the second-and-later payments; R7: the flagged sales invoices).
+
+`agent/guard.py`:
+- Replace step 5: compute `per_table` sums over the finding's evidence exactly like `validate_format.py` (`invoices.total`, `bank_txns.amount` for both `bank_transactions` and `counterparty_bank`, `purchase_orders.amount`, `contracts.value`, using `ds.record_table` on judge estates and the record kind on legacy data). `best` = the table sum closest to `amount_mxn`; reject unless `abs(amount - best) <= 0.02 × max(best, 1)` **and** that table is the rule's `counted_table`. Reasons name both numbers and the table.
+- If the evidence is missing counted records, do not reject blindly: when `finding.get("auto_complete_exhibits", True)`, add the ids from `exhibit_policy` to the evidence first (the loop always allows this; the LLM's proposal is preserved in the step log). Log what was added.
+- Add `confidence`: `"proven"` when every evidence kind in `rule.evidence_kinds` is present and reconciliation holds; `"probable"` when reconciliation holds but a kind is missing (e.g. kickback with the approver link but no third-party leg). The clean finding carries `confidence`; `agent/contract.py` accepts the optional field.
+- Keep `AMOUNT_TOLERANCE = 0.02` as the named constant (a judge will ask to see it).
+
+## Test: `tests/test_guard.py` additions
+- The four example findings on company_42 still pass (their amounts equal the cited invoice sums).
+- A finding citing only half of the phantom vendor's invoices with the full amount: accepted **with** auto-completed exhibits, and the log entry lists the added ids; with `auto_complete_exhibits: False` it is rejected with "does not reconcile".
+- Amount 5% off → rejected; amount matching `bank_txns` sum but rule R1 → rejected because the counted table is `invoices`.
+- A kickback finding with no `cp` evidence → accepted as `probable`; with it → `proven`.
+- Run the vendored validator (#88) on a submission built from the cleaned findings on `estate_42`: exit 0 with `--estate`.
+
+## Definition of done
+- [ ] Guard, rules, contract updated; all tests green; the no-LLM run on company_42 still scores 1.0 / 0 / 1.0
+
+**Depends on #79.**
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #88 agent/submit.py: write submission.json per submission_schema.json; vendor validate_format.py; run it in CI  `cc`  OPEN
+
+## Goal
+The JSON the judges machine-check. Every finding becomes a judges' finding with prefixed entities, ≥3 exhibits naming their source table, a money trail, a confidence tier; every declined lead carries signal, reason, tools and closer; `run_metadata` carries the three numbers.
+
+## Spec
+`agent/submit.py` → `build_submission(case: dict, ds: Dataset, log: list[dict], meta: dict) -> dict` and CLI `python -m agent.submit <estate> <case_file.json> --log <run.jsonl> --out submission.json`.
+- `seed`: from `meta` (the estate dir name `estate_<n>` / `company_<n>`, or `--seed`), else 0.
+- `findings[]`: `scheme_type` via the mapping in `docs/SPEC_GAP.md` (internal → judges'); a finding whose internal type has no judges' type (`duplicate_invoice_payment`, `other`) is **moved** to `leads_not_pursued` with `closed_by: "validator"` and a reason that says it is a control observation outside the five types, keeping its evidence ids in the reason text. `entities` = accused ids (already prefixed on judge estates; legacy ids mapped `S→RFC:<rfc>`, `C→RFC:<rfc>`, `E→EMP:<digits>`). `rule_broken` = the rule's legal string. `narrative` ≤ 150 words (truncate at a sentence boundary). `peso_amount`. `confidence` from the guard (#87). `exhibits`: one per evidence id, `exhibit_id = "EX-<nn>"`, `source_table` from `ds.record_table` (legacy: invoice→`invoices`, TX/CP→`bank_txns`, GR→`purchase_orders`), `record_id` (**bank/ledger ids as they appear in the judges' estate**: on legacy data keep ours), `note` from a per-kind template with the amount and date ("Invoice from <vendor> to the company for MXN 98,600.00 on 2025-02-12, no purchase order"); then append master-table exhibits for each accused entity: `vendors`/`employees` row, and `efos_list` row when listed. `money_trail`: the bank rows among the exhibits ordered by date, `from`/`to` as entity names (company name, vendor, employee), each step citing its exhibit id; must connect (each step's `to` equals the next step's `from` where the data supports it).
+- `leads_not_pursued[]`: from `not_pursued` + the step log: `entity`, `signal` = comma-joined detector names from the dossier, `reason` (from #94/#69), `tool_calls_made` = tool names called for that entity in the log, `closed_by` = `"investigator"` (LLM or fallback decision), `"challenger"` (#91), or `"validator"` (guard rejection / type outside enum).
+- `run_metadata`: `llm_calls`, `mxn_cost`, `wall_clock_seconds`, `cost_by_role` (#89), `deterministic: true`.
+- `agent/investigate.py` gains `--submission <path>` (default `submission.json` next to `--out`) and calls this after the case file is written.
+
+`scripts/judges/validate_format.py`: the judges' file, verbatim, with a one-line header comment naming its origin. `tests/test_submission_format.py`: build the submission for `tests/fixtures/judges_mini` (no-LLM) and for `data_estate/out/estate_42/estate.db` when present; call `validate_structure` → `[]` and `validate_against_estate(sub, db)` → `[]`.
+
+## Definition of done
+- [ ] `python -m agent.investigate data_estate/out/estate_42/estate.db --no-llm --submission s.json` then `python scripts/judges/validate_format.py --submission s.json --estate data_estate/out/estate_42/estate.db` prints PASS
+- [ ] Tests green; CI runs the validator test
+
+**Depends on #79 and #87.**
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #89 run_metadata: count LLM calls and tokens in agent/llm.py, price constants, cost in the step log  `hermes-ok`  OPEN
+
+## Goal
+"Have three numbers ready: LLM call count, MXN cost, wall-clock seconds. 'We don't know' scores low on Feasibility." We know wall-clock; the other two are not counted anywhere.
+
+## Spec
+- `agent/llm.py` `LLM`: counters `calls`, `cached_calls`, `prompt_tokens`, `completion_tokens` (from `Reply.usage`), `by_role: dict[str, dict]` keyed by an optional `role` kwarg on `chat(...)` (`"investigator"`, `"challenger"`); `FakeLLM` mirrors them. A `stats()` method returns the dict.
+- `agent/config.py`: `MXN_PER_1K_PROMPT_TOKENS` and `MXN_PER_1K_COMPLETION_TOKENS` constants with a comment: reference price of a hosted API for a comparable open-weight model in MXN (state the source and date); the cluster's marginal cost is 0, and both figures go in the report header. `settings()` exposes them; `.env` may override with `LLM_MXN_PER_1K_PROMPT` / `..._COMPLETION`.
+- `agent/investigate.py`: `run_end` payload gains `llm_calls`, `cached_calls`, `prompt_tokens`, `completion_tokens`, `mxn_cost` (computed from the constants, cached calls cost 0), `cost_by_role`; the case file gets a top-level `run_metadata` with the same fields plus `wall_clock_seconds` and `deterministic` (`true` in no-LLM mode; in LLM mode `true` when every call was cached, else `false` with a note "replay from cache is deterministic").
+- `--no-llm` reports `llm_calls: 0`, `mxn_cost: 0.0`.
+
+## Test: `tests/test_llm.py`, `tests/test_investigate.py` additions
+- `FakeLLM` with 3 scripted replies carrying `usage` → `stats()["calls"] == 3`, tokens summed, `by_role["investigator"]["calls"] == 3` when called with `role="investigator"`.
+- A run with `FakeLLM` writes `run_metadata.llm_calls == <n>` and `mxn_cost == tokens × constants / 1000` within 1e-6; `--no-llm` writes zeros.
+
+## Definition of done
+- [ ] Counters, constants, `run_metadata` in case file and log; tests green
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #90 agent/report.py: the judges' five-section case file with a rendered money-trail diagram (Markdown + self-contained HTML)  `hermes-ok`  OPEN
+
+## Goal
+`case_file_structure.md` fixes the sections and says: "Money trail: a rendered diagram, not prose. Prose-only caps Clarity at 3." Our report is good prose and a table. Produce the required structure in Markdown (Mermaid block) and in a self-contained HTML file with an inline SVG that opens anywhere with no network and no JavaScript.
+
+## Spec
+`python -m agent.report <estate> <case_file.json> --submission submission.json --log run.jsonl --out report.md --html report.html`
+
+Sections, in this order, headings verbatim:
+1. **Header**: company name/RFC, audit period (min–max invoice date), estate seed, LLM calls, MXN cost, wall-clock seconds, "Deterministic: yes/no (why)". All from `run_metadata` (#89).
+2. **Executive summary**: 2–4 plain sentences + the table `Findings (count, with confidence levels) / Total exposure (pesos) / Leads investigated and closed (count)`.
+3. **One section per finding**: heading `<entity name> (<id>) — <judges' scheme type>`; **Rule broken**; **Amount and confidence**; **What happened** (≤150 words, the submission narrative); **Money trail**: a diagram, then nothing else in that subsection; **Exhibits table** (`exhibit id | source table | record id | what it proves`); **Reconciliation**: the arithmetic (`EX-01 98,600.00 + EX-02 … = 2,070,600.00 = claimed`), naming the counted table; **Challenge** (when #91 ran): what was argued and why the finding survived.
+4. **Leads not pursued** (in the body): one entry per declined lead: entity name and id, signal (detector), specific reason, tools called, closed by.
+5. **Method and limits**: architecture in ≤5 sentences; out of scope for this run; what the system cannot detect (from a constant list in code, e.g. "collusion with no money movement in the books"); reproducibility: the exact command line that regenerates this file, and "runs with the network disabled from the cached run".
+
+**Diagram.** Markdown: a `mermaid` block `flowchart LR` with one node per entity (company, vendor, employee, customer) and one edge per money-trail step labelled `EX-nn · MXN amount · date`. HTML: the same graph drawn as inline SVG by a small pure-Python layout (nodes on a horizontal line in trail order, deduplicated; edges as arrows with labels; no external assets, no `<script>`), plus the rest of the report as HTML. The HTML must render in a browser opened from a file path with Wi-Fi off; the test checks for `<svg`, no `http`/`https` URLs, and no `<script>`.
+
+Keep today's tax-exposure lines in section 2 as "Tax exposure (bonus estimate)"; never in `peso_amount`.
+
+## Test: `tests/test_report.py` rewrite
+- On company_42 (no-LLM run + submission from #88): the five `## ` headings in order; each finding section has the seven sub-elements in order; the reconciliation line sums to the claimed amount within 0.01; the Markdown contains one `mermaid` block per finding with as many edges as money-trail steps.
+- HTML: contains `<svg` once per finding, no `<script>`, no `http`; file size < 2 MB.
+- Every declined lead prints signal, reason, tools, closer.
+- Rendering with the network unavailable: monkeypatch `socket.socket` to raise; render still succeeds.
+
+## Definition of done
+- [ ] Both outputs, tests green, `docs/PLAN.md` demo section points at `report.html`
+
+**Depends on #88** (submission fields) and **#89** (header numbers).
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #91 agent/challenge.py: adversarial review that tries to break every finding before it is printed  `hermes-ok`  OPEN
+
+## Goal
+"If your system runs an adversarial review, include what it argued and why the finding survived. A finding that no one tried to break is weaker than one that was attacked and held." Also the judges' question "what if the employee just happens to bank at the same institution?". Give every finding a challenger whose arguments are deterministic record checks, recorded in the log and the case file.
+
+## Spec
+`agent/challenge.py` → `challenge(finding: dict, ds: Dataset) -> dict` returning `{"arguments": [{"claim", "records", "outcome": "survived"|"killed"|"weakened"}], "verdict": "survived"|"killed", "confidence": "proven"|"probable"}`. Arguments per scheme type (all pure pandas over `ds`, no LLM):
+- **phantom_vendor / efos:** "a PO or contract exists for ≥ 50% of the invoices" (killed if true); "the 69-B status is `presunto` and publication is after every invoice" (weakened → `probable`); "the vendor has invoices to *other* receivers" (n/a in our data; skip when no data).
+- **kickback:** "the employee link is same-bank-code only, no transfer between the accounts" (killed if no `counterparty_bank` leg lands on the employee's CLABE **and** the CLABE prefix is the only match); "the transfer references payroll or a loan" (weakened); "the approver is not the linked employee" (weakened).
+- **round_tripping:** "the inbound payer has trading history with us before the first outbound" (weakened); "the forward leg is more than `forward_days` after our payment" (killed if every leg fails).
+- **threshold_splitting:** "a contract with a fixed fee explains the repeated amount" (killed if a contract exists for the vendor and the invoices are ≥ 20 days apart); "the invoices are different parts/descriptions" (weakened).
+- **revenue_inflation:** "the cancelled invoice was reversed in the ledger" (killed for that invoice; finding survives if any remain); "the customer paid other invoices" (weakened).
+- **duplicate payment (observation):** "the second payment was refunded" (killed if an inbound txn from the alternate CLABE with the same amount exists).
+
+`agent/investigate.py`: after the guard accepts a finding, run `challenge`; `killed` → the finding becomes a declined lead with `closed_by: "challenger"` and the claim as reason; `weakened` → `confidence = "probable"`; log `kind: "challenge"` with the arguments. The submission (#88) and report (#90) carry the arguments.
+
+## Test: `tests/test_challenge.py`
+- company_42 no-LLM: all four findings survive; the EFOS finding has the "presunto publication after invoices" argument marked `weakened` for the presunto supplier only if you implement per-entity, else `survived`; the kickback finding's same-bank argument is `survived` because a real `CP*` leg exists.
+- Synthetic: remove the `CP*` legs from a copy of company_42 → kickback finding is `killed` with the same-bank argument; add a contract for the threshold vendor on seed 7 (#81) and spread its invoices → `killed`.
+- The step log contains one `challenge` entry per finding.
+
+## Definition of done
+- [ ] Module, loop integration, tests green; company_42 scores unchanged
+
+**Depends on #88** and **#87**.
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #92 Entangled schemes: one entity in two findings, no double-counting, declined-leads bookkeeping  `hermes-ok`  OPEN
+
+## Goal
+"Schemes may be entangled — two schemes sharing an entity, so a money trail crosses scheme boundaries." After #84 the docket can carry two hints per entity; finish the output side.
+
+## Spec
+- `agent/investigate.py`: units keyed by `(scheme_hint, frozenset(entity_ids))`; the same entity may appear in two findings with different `scheme_type`. `not_pursued` excludes an entity only for the schemes it was accused under: an entity accused of `kickback` but whose `round_tripping` hint was dropped gets a declined-lead entry for the dropped hint with `signal` naming the detectors of that hint.
+- Evidence must not be shared between the two findings when the rule's `counted_table` sums would double count: the exhibit policy (#87) assigns each counted invoice to exactly one finding (the first in `SIGNATURES` order); shared bank legs may be cited by both.
+- `agent/submit.py` and `agent/report.py`: nothing structural; verify they handle two findings with a common entity.
+- `scripts/eval_batch.py`: `--schemes entangled` generates `kickback + roundtrip` with the round-trip pipe registered at the buyer's home and approved by him (the generator change is small: add an `entangle=True` flag to `scheme_round_trip` that reuses the kickback buyer; #81 owner reviews).
+
+## Test: `tests/test_investigate.py` addition
+- Synthetic dossiers: entity `X` with hints `[kickback_shell, round_trip_sales]` → two units, two findings when both guards pass, no invoice cited as counted evidence in both; `X` appears in `not_pursued` for neither.
+- Generated entangled seed (if the generator flag lands; otherwise skip with reason): recall 1.0 for both schemes, penalty 0.
+
+## Definition of done
+- [ ] Loop, policy, tests green
+
+**Depends on #84** and **#87**.
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #93 --replay: rebuild case file, submission and report from a stored run with the network disabled  `hermes-ok`  OPEN
+
+## Goal
+"Replay without a network. Your system must be able to reproduce a completed run with connectivity disabled." Judges may ask for it live. Today a re-run hits the cache, which works only if nothing in the prompt changed; a true replay must not depend on the model at all.
+
+## Spec
+- `agent/investigate.py --replay runs/<ts>.jsonl`: rebuilds `findings` and `not_pursued` from the log's `decision`/`guard`/`challenge` entries (the guard re-validates every finding against the estate; nothing is trusted blindly), writes the case file, submission (#88) and report (#90), and never constructs an `LLM`. `run_metadata` copies the original numbers and adds `"replayed_from": "<path>"`.
+- Every run writes its log path into the case file (`run_metadata.log`), so `--replay` can be invoked with the case file alone.
+- `scripts/demo_run.py` (#27) gets a `--replay` passthrough (comment on #27; do not implement there).
+
+## Test: `tests/test_replay.py`
+- Run company_42 with `FakeLLM` (log to `tmp_path`), then replay with `LLM_BASE_URL=http://127.0.0.1:9` in the environment and `socket.socket` monkeypatched to raise: replay succeeds; the case file equals the original (`json` equality ignoring `run_metadata.replayed_from`); the submission validates (#88).
+- Tamper with the log (change an evidence id to `TX99999`) → replay drops that finding with a guard reason and exits 0 with a warning line.
+
+## Definition of done
+- [ ] Replay path, test green, `README.md` shows the two commands (run, then replay with Wi-Fi off)
+
+**Depends on #88** and **#90**.
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #94 agent/clear.py on judge estates: PO, contract, same-bank-institution and cancelled-invoice checks; tool_calls_made and closed_by  `hermes-ok`  OPEN
+
+## Goal
+#69 replaces canned drop reasons with record checks on our schema. On judge estates the documents that clear a lead are POs, contracts, and the bank code, not goods receipts and home addresses. Extend the checks and make every declined lead carry what the judges' schema asks for.
+
+## Spec (extends `agent/clear.py` from #69)
+- New checks, each returning `(verified: bool, reason: str, records: list[str])`:
+  - `po_trail(entity)`: share of the vendor's invoices with a PO (`ds.goods_receipts` proxy or `ds.purchase_orders`); clears `detect_no_receipt`/`detect_fast_pay_no_deliverable` when ≥ 80%: "8/8 invoices have purchase orders PO-0012…, approved by <name>".
+  - `contract_on_file(entity)`: clears `detect_new_vendor_round_amounts` and `detect_threshold_splitting` leads when a contract covers the vendor and the invoice amounts match `value / 12` within 5%: "contract CTR-… (fixed monthly fee MXN 225,000.00) explains 12 equal invoices".
+  - `same_bank_only(entity)`: for `detect_kickback_outflow`-adjacent leads and any vendor whose CLABE shares a bank code with an employee: "bank code 012 shared with EMP:0002, accounts differ, no transfer between them in bank_txns".
+  - `cancelled_reversed(entity)`: clears `detect_revenue_inflation` leads when every cancelled invoice has a reversing 4000 debit.
+  - `presunto_only(entity)` stays a *lead* (never clears) but the reason says the status and date.
+- Every declined lead gets `signal` (detector names), `tool_calls_made` (the check names run, plus LLM tool calls from the log when in LLM mode), and `closed_by` (`investigator` | `challenger` | `validator`); `agent/investigate.py` writes them into `not_pursued` entries (extra keys are allowed by `agent/contract.py`; add them to its schema as optional).
+- Reasons must name records. A reason that would contain no record id is rewritten to "could not verify from the records: <what was checked>" and the lead is marked `unverified` (#70 escalates those to the model).
+
+## Test: `tests/test_clear.py` additions
+- On `tests/fixtures/judges_mini` (#79): vendor B is cleared by `po_trail` and `contract_on_file` with the PO and contract ids in the reason; vendor A is **not** cleared.
+- On seed 7 with the D6/D7 decoys (#81): D6 cleared by `same_bank_only` naming the bank code and the employee; D7 by `contract_on_file` naming the contract.
+- Every `not_pursued` entry from a company_42 run has non-empty `signal`, `tool_calls_made`, `closed_by`.
+
+## Definition of done
+- [ ] Checks, bookkeeping, tests green; no declined lead on company_42 or estate_42 has a reason without a record id
+
+**Depends on #69, #79, #81.**
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
+
+## #95 Leak hygiene: ground_truth string check under agent/, hypothesis log line names its detectors  `hermes-ok`  OPEN
+
+## Goal
+Two cheap protections against the "Results caps at 2" rule: judges grep `ground_truth` under the source tree, and they read the trace for a scheme type named "before investigating".
+
+## Spec
+- `tests/test_no_hidden_access.py`: add a test that no file under `agent/` and `scripts/` (excluding `scripts/judges/` and `scripts/eval_batch.py`, which are harness) contains the string `ground_truth` (case-insensitive), and that `agent/` never imports `data_estate` (the harness package).
+- `agent/investigate.py`: the `hypothesis` log entry's `text` must start with `"Detectors <a>, <b> match the <scheme> signature; investigating"` in fallback mode, and in LLM mode the entry gains `derived_from: [detector names]`. Never emit a hypothesis for a unit with no detector hits.
+- `docs/STEP_LOG.md` (#67) gets the field; `demo/sample_trace.jsonl` (#73) regenerated if it exists.
+
+## Test
+- The grep test; a fallback run on company_42 has every `hypothesis.text` starting with `Detectors ` and listing ≥1 detector that actually fired for that entity.
+
+## Definition of done
+- [ ] Tests green; `grep -rn ground_truth agent/ scripts/` returns only harness files
+
+### Conventions
+- Read `docs/SPEC_GAP.md` first: it maps the judges' schema, scheme enum and output format onto our build. The spec files live in `student-materials/forensic-auditor/` (a sibling of the repo on Sondre's machine; ask for the pack if you do not have it).
+- This issue is the approval AGENTS.md rule 5 requires for the schema or contract change it describes. Do exactly what is written here, nothing more.
+- Tests may read `hidden/`; nothing under `agent/` may, and the string `ground_truth` must never appear under `agent/` (judges grep for it).
+- Run `python -m pytest -q` and `ruff check .` before the PR. No new dependencies unless this issue names one.
