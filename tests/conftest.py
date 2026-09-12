@@ -16,6 +16,13 @@ def dataset_dir() -> Path:
 
 
 @pytest.fixture(scope="session")
+def ds(dataset_dir):
+    from agent.data import load
+
+    return load(dataset_dir)
+
+
+@pytest.fixture(scope="session")
 def truth() -> dict:
     """Ground truth for company_42: {"schemes": [...], "decoys": [...], "meta": {...}}."""
     return json.loads((COMPANY_42 / "hidden" / "ground_truth.json").read_text(encoding="utf-8"))
