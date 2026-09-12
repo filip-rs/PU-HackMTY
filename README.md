@@ -37,6 +37,7 @@ python -m data_estate.generate --seed 7 --format judges --out data_estate/out/es
 python -m agent.investigate data_estate/out/estate_7/estate.db --out case_file.json --submission submission.json --report report.html
 python scripts/judges/validate_format.py --submission submission.json --estate data_estate/out/estate_7/estate.db
 python scripts/eval_batch.py --seeds 901-910 --report --format judges                             # the results slide (#86)
+python -m api.server --port 8765                                   # HTTP + SSE for the frontend (api/README.md)
 ```
 
 ## Judges' pack
