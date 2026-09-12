@@ -56,3 +56,16 @@ validator that fails the build when the writer drifts; #68 exposes the same line
 the agent may not touch `agent/`, yet it delivered the tool layer, the guard, the loop and the report without incident.
 The brief now says it may work anywhere except the frozen dataset and three protected tests, and merges its own PRs
 once CI is green.
+
+## 2026-09-13 09:40 · Canned "why we cleared them" reasons were not evidence
+Tried: #69 — replace each fixed `_DET_CLAUSES` sentence in `agent/investigate.py` with a check over the `Dataset`
+that returns an innocent explanation *with record IDs*, and an honest `"unverified: ..."` when the records cannot
+confirm it.
+Happened: every weak-lead detector got a pure pandas `clear_reason` check (new vendor/round amounts, name twin on
+69-B, shared address, no receipt / fast pay, cash payments); strong scheme-defining detectors are never cleared.
+On company_42 all 14 decoys now carry a reason naming a GR id, invoice UUID, RFC or the co-located supplier — no
+`unverified:` anywhere — and the `decision` step-log payload gained `"verified"`.
+Changed: `_drop_reason` returns `(reason, verified)`; `_DET_CLAUSES` is gone; `agent/clear.py` is the single place
+that answers "how do you know?". The check is only as good as the date-filtered records it reads, so a hand-edited
+judge estate that breaks one of the innocent assumptions now surfaces `unverified:` (and #70 escalates it) instead of
+a false "cleared".
