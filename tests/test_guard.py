@@ -63,17 +63,42 @@ def test_every_legal_string_is_recognised():
 
 # --- the reference case file's findings pass the guard ------------------------
 
-@pytest.mark.parametrize("scheme_type", ["efos_fake_supplier", "kickback_shell",
-                                         "round_trip_sales", "duplicate_invoice_payment"])
+REFERENCE_TYPES = ["efos_fake_supplier", "kickback_shell",
+                   "round_trip_sales", "duplicate_invoice_payment"]
+
+
+@pytest.mark.parametrize("scheme_type", REFERENCE_TYPES)
 def test_reference_findings_pass_unchanged(ds, scheme_type):
+    """Every reference finding survives, with its citation completed, never trimmed.
+
+    Since #87 the guard adds the records the rule's amount rests on (``exhibit_policy``)
+    so the claim reconciles against the counted table the way the judges compute it. The
+    finding's own evidence is never dropped.
+    """
     finding = _ref_finding(ds, scheme_type)
     clean, reasons = guard(finding, ds)
     assert clean is not None, f"{scheme_type} rejected: {reasons}"
     assert clean["scheme_type"] == finding["scheme_type"]
     assert clean["accused"] == finding["accused"]
-    assert clean["evidence"] == finding["evidence"]
+    assert set(clean["evidence"]) >= set(finding["evidence"]), "evidence was dropped"
     assert abs(clean["amount_mxn"] - finding["amount_mxn"]) < 0.005
     assert clean["rule"] == finding["rule"]
+    assert clean["confidence"] in ("proven", "probable")
+
+
+@pytest.mark.parametrize("scheme_type", REFERENCE_TYPES)
+def test_counted_exhibits_reconcile_within_two_percent(ds, scheme_type):
+    """The judges' arithmetic: the counted table's exhibits sum to the claim within 2%."""
+    from agent.reconcile import per_table_sums, reconciles
+    from agent.rules import LEGAL_TO_ID, RULES
+
+    finding = _ref_finding(ds, scheme_type)
+    clean, reasons = guard(finding, ds)
+    assert clean is not None, reasons
+    rule = RULES[LEGAL_TO_ID[clean["rule"]]]
+    sums = per_table_sums(clean["counted_exhibits"], ds)
+    assert list(sums) == [rule.counted_table], f"{scheme_type}: counted set spans {sums}"
+    assert reconciles(sums[rule.counted_table], clean["amount_mxn"])
 
 
 # --- cleaning: narrative truncation + unknown keys -----------------------------
@@ -129,9 +154,44 @@ def test_amount_outside_tolerance_rejected_with_both_numbers(ds):
     finding = {**finding, "amount_mxn": finding["amount_mxn"] * 3}
     clean, reasons = guard(finding, ds)
     assert clean is None
-    # rejected with both the proposed and the recomputed figure
-    assert any(str(finding["amount_mxn"]) in r for r in reasons)
-    assert any("recomputed" in r for r in reasons)
+    # rejected naming the claim and what the cited exhibits actually add up to
+    assert any(f"{finding['amount_mxn']:.2f}" in r for r in reasons)
+    assert any("2,070,600.00" in r for r in reasons)
+
+
+def test_ten_percent_off_is_rejected_at_the_judges_tolerance(ds):
+    """2% is the judges' rule. A 10% error passed the old 25% tolerance; it must not now."""
+    finding = _ref_finding(ds, "efos_fake_supplier")
+    finding = {**finding, "amount_mxn": round(finding["amount_mxn"] * 1.10, 2)}
+    clean, reasons = guard(finding, ds)
+    assert clean is None
+    assert any("does not reconcile" in r for r in reasons)
+
+
+def test_one_percent_off_is_accepted(ds):
+    """Inside the tolerance the finding stands; the guard is not stricter than the judges."""
+    finding = _ref_finding(ds, "efos_fake_supplier")
+    finding = {**finding, "amount_mxn": round(finding["amount_mxn"] * 1.01, 2)}
+    clean, reasons = guard(finding, ds)
+    assert clean is not None, reasons
+
+
+def test_amount_matching_the_wrong_table_is_rejected(ds):
+    """A claim that reconciles against bank rows cannot stand under an invoice rule."""
+    from agent.reconcile import per_table_sums
+
+    finding = _ref_finding(ds, "duplicate_invoice_payment")
+    clean, _ = guard(finding, ds)
+    assert clean is not None
+    invoices_total = per_table_sums(
+        [e for e in clean["evidence"] if e not in clean["counted_exhibits"]], ds
+    ).get("invoices")
+    assert invoices_total, "expected the duplicate finding to cite invoices as well"
+    # R4 counts bank_txns; claiming the invoice total instead must be refused.
+    bad = {**finding, "amount_mxn": invoices_total, "auto_complete_exhibits": False}
+    clean, reasons = guard(bad, ds)
+    assert clean is None
+    assert any("counts its money in" in r or "does not reconcile" in r for r in reasons)
 
 
 # --- rule id and reference acceptance ------------------------------------------
@@ -196,7 +256,9 @@ def test_ledger_ids_moved_to_narrative(ds):
     clean, reasons = guard(finding, ds)
     assert clean is not None, reasons
     assert reasons == []
-    assert clean["evidence"] == original_evidence
+    # The ledger id is set aside, never cited; the finding's own records all survive.
+    assert "GL00652" not in clean["evidence"]
+    assert set(clean["evidence"]) >= set(original_evidence)
     assert "GL00652" in clean["narrative"]
     assert "Ledger entries consulted" in clean["narrative"]
 

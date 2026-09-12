@@ -41,6 +41,13 @@ from pathlib import Path
 import pandas as pd
 
 from .data import Dataset, load
+from .reconcile import (
+    AMOUNT_COLUMN as _AMOUNT_COLUMN,  # noqa: F401  (re-exported below)
+)
+from .reconcile import PESO_TOLERANCE as _PESO_TOLERANCE
+from .reconcile import amount_of as _amount_of_shared
+from .reconcile import reconciles as _reconciles_shared
+from .reconcile import source_table as _source_table_shared
 
 # Our internal scheme names -> the judges' closed enum (docs/SPEC_GAP.md).
 SCHEME_MAP = {
@@ -54,12 +61,10 @@ SCHEME_MAP = {
 CONTROL_ONLY = ("duplicate_invoice_payment", "other")
 
 # Tables whose rows carry an amount the judges reconcile against, and the column.
-AMOUNT_COLUMN = {"invoices": "total", "bank_txns": "amount", "purchase_orders": "amount", "contracts": "value"}
-PESO_TOLERANCE = 0.02
+AMOUNT_COLUMN = _AMOUNT_COLUMN
+PESO_TOLERANCE = _PESO_TOLERANCE
 MAX_NARRATIVE_WORDS = 150
 
-# Legacy record-id prefixes -> the judges' table the record would live in.
-_LEGACY_PREFIX_TABLE = {"TX": "bank_txns", "CP": "bank_txns", "GR": "purchase_orders", "GL": "ledger"}
 
 
 def _money(value: float) -> str:
@@ -105,13 +110,7 @@ def entity_id(internal_id: str, ds: Dataset) -> str:
 
 def source_table(record_id: str, ds: Dataset) -> str:
     """The judges' table a record id belongs to, for an exhibit's ``source_table``."""
-    if ds.record_table:
-        table = ds.record_table.get(record_id)
-        if table:
-            return table
-    if len(ds.invoices) and record_id in set(ds.invoices["uuid"]):
-        return "invoices"
-    return _LEGACY_PREFIX_TABLE.get(record_id[:2], "")
+    return _source_table_shared(record_id, ds)
 
 
 def _row(frame: pd.DataFrame, column: str, value: str):
@@ -255,25 +254,11 @@ def _note_for(record_id: str, table: str, ds: Dataset) -> str:
 
 def _amount_of(record_id: str, table: str, ds: Dataset) -> float:
     """The amount the judges' validator will read off this record, or 0.0."""
-    if table == "invoices":
-        row = _row(ds.invoices, "uuid", record_id)
-        return float(row["total"]) if row is not None else 0.0
-    if table == "bank_txns":
-        row = _row(ds.bank_transactions, "txn_id", record_id)
-        if row is None:
-            row = _row(ds.counterparty_bank, "record_id", record_id)
-        return float(row["amount"]) if row is not None else 0.0
-    if table == "purchase_orders":
-        row = _row(ds.purchase_orders, "po_id", record_id)
-        return float(row["amount"]) if row is not None else 0.0
-    if table == "contracts":
-        row = _row(ds.contracts, "contract_id", record_id)
-        return float(row["value"]) if row is not None else 0.0
-    return 0.0
+    return _amount_of_shared(record_id, table, ds)
 
 
 def _reconciles(total: float, claimed: float) -> bool:
-    return abs(claimed - total) <= PESO_TOLERANCE * max(total, 1.0)
+    return _reconciles_shared(total, claimed)
 
 
 def _invoice_ids(ds: Dataset, accused: set[str], tipo: str | None = None) -> list[str]:
@@ -295,6 +280,16 @@ def _amount_basis(finding: dict, ds: Dataset, cited: list[str]) -> tuple[list[st
     """
     claimed = float(finding.get("amount_mxn", 0.0))
     accused = set(finding.get("accused", []))
+
+    # The evidence guard (#87) already decided which records carry this finding's money
+    # and refused to let it exist unless they reconcile. Trust that rather than
+    # re-deriving it: it is the same arithmetic, done once, where the finding was born.
+    counted = [str(r) for r in finding.get("counted_exhibits", []) if str(r)]
+    if counted:
+        total = sum(_amount_of(r, source_table(r, ds), ds) for r in counted)
+        if total > 0 and _reconciles(total, claimed):
+            return counted, claimed
+
     cited_invoices = [r for r in cited if source_table(r, ds) == "invoices"]
     cited_bank = [r for r in cited if source_table(r, ds) == "bank_txns"]
 
