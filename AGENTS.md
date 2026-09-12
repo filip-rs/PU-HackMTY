@@ -18,7 +18,11 @@ suppliers it cannot back with a rule broken, a peso amount, and record IDs. See 
 - `docs/` — brief, strategy, plan, issue queue mirror, Hermes brief. `scripts/` — one-off checks such as `check_llm.py`.
 
 ## Hard rules
-1. Never push to `master`. All work goes through a PR. Humans merge.
+1. Never push to `master`. All work goes through a PR, and CI must be green before it merges.
+   **Hermes merges its own PRs.** Once the required `test` check passes it runs
+   `gh pr merge <n> --squash --delete-branch` itself; it does not wait for a human. Never `--admin`,
+   never a PR it did not open, never on a red or pending check, and never make a check green by
+   weakening, skipping or deleting a test. Other agents open the PR and leave it for a human.
 2. Never read or copy anything under any `hidden/` directory into `agent/`. The agent must not see ground truth. Tests may read it.
    The string `ground_truth` must not appear anywhere under `agent/` (judges grep for it), and `agent/` never imports `data_estate`.
 3. Every accusation in a case file must reference record IDs that exist in the dataset. `tests/test_case_file_contract.py` enforces this; do not weaken it.
