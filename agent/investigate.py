@@ -85,11 +85,23 @@ def _log_timestamp() -> str:
 
 
 class _Log:
-    """One JSON object per line, the demo UI's data source (#26)."""
+    """One JSON object per line, the demo UI's data source (#26).
 
-    def __init__(self) -> None:
+    When a ``path`` is given the file is opened immediately and every ``emit``
+    appends and flushes the line, so a reader can tail it live mid-run (a
+    partial last line means the writer is mid-write; no ``run_end`` after 60 s
+    of silence means the run was aborted). :func:`run` calls :meth:`close` in a
+    ``finally`` so a crash still leaves a readable file. Without a path it only
+    buffers in memory.
+    """
+
+    def __init__(self, path: str | None = None) -> None:
         self.entries: list[dict[str, Any]] = []
         self._step = 0
+        self._fh = None
+        if path is not None:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            self._fh = open(path, "w", encoding="utf-8")
 
     def emit(self, kind: str, entity_id: str = "", payload: dict | None = None) -> dict:
         self._step += 1
@@ -101,16 +113,15 @@ class _Log:
             "payload": payload or {},
         }
         self.entries.append(entry)
+        if self._fh is not None:
+            self._fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+            self._fh.flush()
         return entry
 
-
-def _write_log(log: _Log, path: str | None) -> None:
-    if not path:
-        return
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        for entry in log.entries:
-            fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    def close(self) -> None:
+        if self._fh is not None:
+            self._fh.close()
+            self._fh = None
 
 
 def _write_case_file(case: dict, out: str | None) -> None:
@@ -713,43 +724,45 @@ def run(
     units = _build_units(dossiers)
     log_path = log or f"runs/{_log_timestamp()}.jsonl"
 
-    rec = _Log()
-    rec.emit(
-        "run_start",
-        "",
-        {"dataset": str(dataset_dir), "n_leads": len(dossiers), "mode": mode, "model": model},
-    )
-    t0 = time.time()
+    rec = _Log(log_path)
+    try:
+        rec.emit(
+            "run_start",
+            "",
+            {"dataset": str(dataset_dir), "n_leads": len(dossiers), "mode": mode, "model": model},
+        )
+        t0 = time.time()
 
-    if use_llm and effective_llm is not None:
-        findings, dropped = _llm_loop(ds, units, effective_llm, rec, max_leads, max_steps)
-    else:
-        findings, dropped = _fallback_loop(ds, units, rec, max_leads)
+        if use_llm and effective_llm is not None:
+            findings, dropped = _llm_loop(ds, units, effective_llm, rec, max_leads, max_steps)
+        else:
+            findings, dropped = _fallback_loop(ds, units, rec, max_leads)
 
-    findings.sort(key=lambda f: (f["scheme_type"], f["accused"]))
-    not_pursued = _build_not_pursued(dossiers, ds, findings, dropped)
-    case = {"findings": findings, "not_pursued": not_pursued}
+        findings.sort(key=lambda f: (f["scheme_type"], f["accused"]))
+        not_pursued = _build_not_pursued(dossiers, ds, findings, dropped)
+        case = {"findings": findings, "not_pursued": not_pursued}
 
-    errors = validate_case_file(case, ds)
-    if errors:
-        raise RuntimeError("case file failed the contract: " + "; ".join(errors))
+        errors = validate_case_file(case, ds)
+        if errors:
+            raise RuntimeError("case file failed the contract: " + "; ".join(errors))
 
-    wall = round(time.time() - t0, 3)
-    rec.emit(
-        "run_end",
-        "",
-        {
-            "n_findings": len(findings),
-            "n_not_pursued": len(not_pursued),
-            "wall_s": wall,
-            "case_file": str(out),
-            "report": "",
-        },
-    )
+        wall = round(time.time() - t0, 3)
+        rec.emit(
+            "run_end",
+            "",
+            {
+                "n_findings": len(findings),
+                "n_not_pursued": len(not_pursued),
+                "wall_s": wall,
+                "case_file": str(out),
+                "report": "",
+            },
+        )
 
-    _write_case_file(case, out)
-    _write_log(rec, log_path)
-    return case
+        _write_case_file(case, out)
+        return case
+    finally:
+        rec.close()
 
 
 def main(argv: list[str] | None = None) -> int:
