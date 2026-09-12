@@ -52,7 +52,8 @@ may take it · `cc` Claude Code · `codex` Codex · `needs-human` a person decid
 Hermes merges its own PRs once CI is green; humans merge everything else. Queue order and dependencies: `docs/PLAN.md`.
 
 The frontend is built outside this repo. Its contract with the backend is the step log (`docs/STEP_LOG.md`, #67)
-and the API server (`api/server.py`, #68); `demo/sample_trace.jsonl` is a real run to build against.
+and the API server (`api/server.py`, #68); `demo/sample_trace.jsonl` is a real run to build against (deterministic mode, so it carries no `tool_call`
+events yet). Measured results: [`docs/eval/`](docs/eval/README.md).
 
 The LLM runs on a teammate's HPC cluster approved for sensitive data. Dataset contents never go to any other
 provider (AGENTS.md rule 8).

@@ -23,6 +23,13 @@ can't back up. Deliverable: working code + a 3-minute live demo where judges inj
 | `--no-llm` | company_42, seed 7 | 1.0 | 0 | 0.1 s |
 | LLM (GLM-5.3-Flash on the cluster) | company_42, 7 logged runs | 1/4, 1/4, 3/4, 3/4, 3/4, 4/4, 4/4 | 0 | 57–86 s cold |
 
+> The LLM row is **not a reportable result**: company_42 is a tuning seed, its answer file is committed here,
+> and the response cache may be replaying earlier answers. It is also not reproducible on this machine (`.env`
+> holds the placeholders from `.env.example` and those seven logs are not in `runs/`). The measured, reproducible numbers are in [`docs/eval/`](eval/README.md), deterministic path,
+> reporting seeds 901–910. Re-run the LLM tables with the commands in `docs/eval/README.md` once the cluster
+> credentials are in `.env` (#72).
+
+
 The LLM path loses findings for two reasons, both diagnosed from `runs/*.jsonl`: tool-call arguments truncated
 by a small completion budget (fixed in PR #64), and ledger `GL*` IDs cited as evidence, which the contract does
 not accept, so the guard rejects the finding and the loop drops the lead instead of retrying (#65, #66).
@@ -34,8 +41,10 @@ records instead of canned sentences (#69), a path for schemes we did not plan fo
 rehearsal pack (#31).
 
 **Frontend:** built by a teammate outside this repo. The backend's contract to it is the step log
-(`docs/STEP_LOG.md`, #67) and the API server (#68). `demo/sample_trace.jsonl` is a real LLM run on company_42
-with all four findings, for building against before the API lands.
+(`docs/STEP_LOG.md`, #67) and the API server (#68). `demo/sample_trace.jsonl` is a real run on company_42 with
+all four findings, for building against before the API lands. Its `run_start` says `"mode": "no-llm"`: it is a
+deterministic run, so it has the right log *shape* but no `tool_call` events. Regenerate it in LLM mode once
+`.env` is filled in, so the frontend is built against a trace that has tool calls in it.
 
 ## How we win (judging criteria → what we build)
 
