@@ -84,6 +84,10 @@ def _settings():
 # ---- config --------------------------------------------------------------
 
 def test_load_env(tmp_path, monkeypatch):
+    # the operator may have LLM_* exported in the shell (real env wins in load_env);
+    # clear them so the tests assert against the tmp .env, not the live endpoint
+    for k in KEYS:
+        monkeypatch.delenv(k, raising=False)
     p = tmp_path / ".env"
     p.write_text("# a comment\n\nLLM_BASE_URL=https://a/v1\nLLM_API_KEY=\"secret key\"\nLLM_MODEL=model-1\n")
     env = load_env(p)
@@ -96,13 +100,17 @@ def test_load_env(tmp_path, monkeypatch):
     assert "LLM_API_KEY" in KEYS
 
 
-def test_settings_none_when_missing_key(tmp_path):
+def test_settings_none_when_missing_key(tmp_path, monkeypatch):
+    for k in KEYS:
+        monkeypatch.delenv(k, raising=False)
     p = tmp_path / ".env"
     p.write_text("LLM_BASE_URL=https://a/v1\n")
     assert settings(p) is None
 
 
-def test_settings_parses(tmp_path):
+def test_settings_parses(tmp_path, monkeypatch):
+    for k in KEYS:
+        monkeypatch.delenv(k, raising=False)
     p = tmp_path / ".env"
     p.write_text("LLM_BASE_URL=https://a/v1\nLLM_API_KEY=abc\nLLM_MODEL=m1\n")
     s = settings(p)
@@ -237,12 +245,14 @@ def test_llm_real_round_trip():
     if s is None:
         pytest.skip("no .env")
     llm = LLM(s)
-    plain = llm.chat([{"role": "user", "content": "Reply with the single word OK."}], max_tokens=8)
+    # GLM-5.3-Flash reasons before answering; a tiny max_tokens gets eaten by
+    # reasoning_content and content comes back null
+    plain = llm.chat([{"role": "user", "content": "Reply with the single word OK."}], max_tokens=512)
     assert plain.text
     tools = llm.chat(
         [{"role": "user", "content": "Use the add tool to add 2 and 3."}],
         tools=[ADD_TOOL],
-        max_tokens=64,
+        max_tokens=512,
     )
     assert tools.tool_calls
     assert tools.tool_calls[0].name == "add"
