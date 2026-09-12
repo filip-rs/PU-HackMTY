@@ -40,7 +40,6 @@ def detect_clabe_not_on_master(ds, **params) -> list[dict]:
     # invoice references a known counterparty and every supplier has a CLABE).
     inv_cp = ds.invoices.set_index("uuid")["counterparty_id"]
     sup_clabe = ds.suppliers.set_index("supplier_id")["clabe"]
-    sup_name = ds.suppliers.set_index("supplier_id")["name"]
 
     rows: list[dict] = []
     for t in out.itertuples(index=False):

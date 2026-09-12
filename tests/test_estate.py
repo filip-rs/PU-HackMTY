@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from data_estate.generate import Generator, write_estate
 from data_estate.validate import check
 
