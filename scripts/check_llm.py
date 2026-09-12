@@ -3,14 +3,22 @@
 
   python scripts/check_llm.py            # uses .env in the repo root
   python scripts/check_llm.py --models   # also list the models the endpoint serves
+  python scripts/check_llm.py --tools    # also verify the endpoint returns *structured*
+                                         # tool calls (the investigation loop needs them)
 
 Exit 0 on success, 1 otherwise. Run it from the venue before the demo.
+
+`--tools` matters: vLLM needs ``--enable-auto-tool-choice --tool-call-parser <name>``
+matching the model; without it the model prints ``<tool_call>`` text and the loop
+cannot work. We must find that out from the venue, not on stage.
+
+``load_env`` and ``KEYS`` live in ``agent.config`` so the client (#22) and the loop
+(#13) share one reader. This script stays stdlib-only (it does not import ``openai``).
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 import urllib.error
@@ -18,21 +26,10 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-KEYS = ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-
-def load_env(path: Path = ROOT / ".env") -> dict[str, str]:
-    """Minimal .env reader (KEY=VALUE, # comments, optional quotes). Real env vars win over the file."""
-    env: dict[str, str] = {}
-    if path.exists():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip("'\"")
-    env.update({k: os.environ[k] for k in KEYS if os.environ.get(k)})
-    return env
+from agent.config import KEYS, load_env  # noqa: E402
 
 
 def request(env: dict[str, str], path: str, payload: dict | None = None, timeout: float = 60) -> dict:
@@ -44,9 +41,55 @@ def request(env: dict[str, str], path: str, payload: dict | None = None, timeout
         return json.loads(r.read())
 
 
+ADD_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "add",
+        "description": "Add two integers",
+        "parameters": {
+            "type": "object",
+            "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
+            "required": ["a", "b"],
+        },
+    },
+}
+
+
+def check_tools(env: dict[str, str]) -> int:
+    """POST a chat completion with one tool; report whether it came back structured."""
+    res = request(env, "/chat/completions", {
+        "model": env["LLM_MODEL"],
+        "messages": [{"role": "user", "content": "Use the add tool to add 2 and 3."}],
+        "tools": [ADD_TOOL],
+        "tool_choice": "auto",
+        "temperature": 0,
+        "max_tokens": 64,
+    })
+    message = res["choices"][0]["message"]
+    calls = message.get("tool_calls") or []
+    if calls:
+        fn = calls[0].get("function", {}) or {}
+        args_raw = fn.get("arguments") or ""
+        try:
+            args = json.loads(args_raw)
+        except json.JSONDecodeError:
+            args = None
+        if fn.get("name") == "add" and args == {"a": 2, "b": 3}:
+            print(f"OK tools  name=add args={json.dumps(args, ensure_ascii=False)}")
+            return 0
+    print("raw message:", json.dumps(message, ensure_ascii=False))
+    print(
+        "endpoint did not return a structured tool call; vLLM needs "
+        "--enable-auto-tool-choice --tool-call-parser <hermes|llama3_json|mistral|...> "
+        "matching the model"
+    )
+    return 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", action="store_true", help="list models served by the endpoint")
+    ap.add_argument("--tools", action="store_true", help="also verify structured tool calls")
     args = ap.parse_args()
     env = load_env()
     missing = [k for k in KEYS if not env.get(k)]
@@ -66,6 +109,8 @@ def main() -> int:
         })
         text = res["choices"][0]["message"]["content"].strip()
         print(f"OK  {env['LLM_MODEL']} @ {env['LLM_BASE_URL']}  {time.time() - t0:.1f}s  reply={text!r}")
+        if args.tools:
+            return check_tools(env)
         return 0
     except urllib.error.HTTPError as e:
         print(f"HTTP {e.code} from {e.url}: {e.read()[:300]!r}")
