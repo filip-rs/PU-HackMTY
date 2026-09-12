@@ -3,7 +3,10 @@ SEED ?= 7
 override SEED := $(value SEED)
 export SEED
 
-.PHONY: test gen score
+.PHONY: test lint gen score
+
+lint:
+	$(PYTHON) -m ruff check .
 
 test:
 	$(PYTHON) -m pytest -q

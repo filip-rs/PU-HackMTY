@@ -1,6 +1,5 @@
-from pathlib import Path
 import subprocess
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -8,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_requirements_declares_runtime_and_test_dependencies():
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
 
-    assert requirements == ["pandas", "pytest"]
+    assert requirements == ["pandas", "pytest", "ruff"]
 
 
 def test_make_test_uses_available_project_python():
