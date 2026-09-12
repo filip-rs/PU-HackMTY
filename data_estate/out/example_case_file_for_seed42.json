@@ -3,6 +3,7 @@
   {
    "scheme_type": "efos_fake_supplier",
    "accused": [
+    "S00020",
     "S00030"
    ],
    "rule": "CFF Art. 69-B (operaciones inexistentes); CFF Art. 29-A; LISR Art. 27 (deducci\u00f3n improcedente)",
@@ -13,6 +14,11 @@
     "4E39F65A-20DB-4294-DFAE-180393D797E7",
     "C0AC1C00-AF8E-26B2-6CFB-F1736B4D3D1A",
     "FA2C9E79-2758-4F1A-239E-5593EC11A44D",
+    "663463E9-D317-D8C9-1060-573A721B7707",
+    "2CD51392-D98F-5E83-CF5B-294DD2CC4853",
+    "E75182A4-F481-38B5-6395-09C4119A7396",
+    "4F70B88B-F06C-69D9-9339-304B9A8CB3D7",
+    "1752815C-BCBF-1583-0A01-75E5937D6FB1",
     "TX00189"
    ]
   },
