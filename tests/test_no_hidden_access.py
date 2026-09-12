@@ -33,6 +33,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIR = ROOT / "agent"
+SCRIPTS_DIR = ROOT / "scripts"
 CHECK_LLM = ROOT / "scripts" / "check_llm.py"
 COMPANY_42 = ROOT / "data_estate" / "out" / "company_42"
 
@@ -161,6 +162,50 @@ def test_agent_and_check_llm_never_open_a_hidden_path():
     for path in _source_files():
         violations.extend(_scan_file(path, "open"))
     assert violations == [], "\n".join(violations)
+
+
+# ------------------------------------------------------- (95) ground_truth grep
+# The judges grep the source tree for `ground_truth` and it caps the score at 2,
+# so no file under agent/ or scripts/ may contain the string at all. The only
+# exceptions are the vendored judge harness (scripts/judges/, #88) and
+# scripts/eval_batch.py (#86), which legitimately name the judges' ground truth.
+_HARNESS_EXCLUDES = ("scripts/eval_batch.py",)
+
+
+def _is_harness(rel: Path) -> bool:
+    """Return whether a path under ROOT is a vendored judge/harness file."""
+    posix = rel.as_posix()
+    if posix in _HARNESS_EXCLUDES:
+        return True
+    # everything under scripts/judges/ is judges' own code
+    return len(rel.parts) >= 3 and rel.parts[0] == "scripts" and rel.parts[1] == "judges"
+
+
+def _scan_for_ground_truth() -> list[str]:
+    """Every text file under agent/ and scripts/ (minus the harness) containing 'ground_truth'."""
+    offenders: list[str] = []
+    for root in (AGENT_DIR, SCRIPTS_DIR):
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            rel = path.relative_to(ROOT)
+            if _is_harness(rel):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue  # binary (compiled .pyc etc.); not greppable source
+            if "ground_truth" in text.lower():
+                offenders.append(rel.as_posix())
+    return offenders
+
+
+def test_no_file_under_agent_or_scripts_mentions_ground_truth():
+    """`ground_truth` may appear nowhere under agent/ or scripts/ except the judge harness."""
+    offenders = _scan_for_ground_truth()
+    assert offenders == [], "files mentioning 'ground_truth':\n" + "\n".join(offenders)
 
 
 # ------------------------------------------------------------------- runtime part

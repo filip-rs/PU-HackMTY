@@ -489,11 +489,14 @@ def _fallback_loop(
             dropped[eid] = reason
             continue
         scheme_type = hint
+        # The trace names the detectors that actually fired (the signature) so a
+        # judge reading the log sees *why* this lead became a hypothesis (#95).
+        det_names = unit["detectors"]
         rec.emit(
             "hypothesis",
             eid,
             {
-                "text": f"{scheme_type.replace('_', ' ')} suspected: {unit['name']} (signature {hint}).",
+                "text": f"Detectors {', '.join(det_names)} match the {scheme_type} signature; investigating.",
                 "scheme_type": scheme_type,
             },
         )
@@ -572,7 +575,11 @@ def _llm_loop(
                 rec.emit(
                     "hypothesis",
                     eid,
-                    {"text": reply.text or f"{hint} suspected.", "scheme_type": hint},
+                    {
+                        "text": reply.text or f"{hint} suspected.",
+                        "scheme_type": hint,
+                        "derived_from": unit["detectors"],
+                    },
                 )
                 first = False
             messages.append(assistant_message(reply))

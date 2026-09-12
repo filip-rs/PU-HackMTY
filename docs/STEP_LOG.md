@@ -80,11 +80,12 @@ Example (the very first line of a run):
 
 | field | type | meaning |
 |---|---|---|
-| `text` | string | a readable statement of what the agent thinks is going on |
+| `text` | string | a readable statement of what the agent thinks is going on. In the deterministic fallback it is `"Detectors <a>, <b> match the <scheme> signature; investigating."`, naming the detector modules that actually fired for the entity. |
 | `scheme_type` | string | the scheme type it suspects (`efos_fake_supplier`, `kickback_shell`, `round_trip_sales`, `duplicate_invoice_payment`, or `other`) |
+| `derived_from` | array of string | (LLM mode only) the detector modules whose leads this hypothesis derives from |
 
 ```json
-{"ts": "2026-09-12T21:51:15+02:00", "entity_id": "S00004", "step": 3, "kind": "hypothesis", "payload": {"text": "kickback shell suspected: Gestoría y Enlace San Nicolás S de RL de CV (signature kickback_shell).", "scheme_type": "kickback_shell"}}
+{"ts": "2026-09-12T23:14:20+02:00", "entity_id": "S00004", "step": 3, "kind": "hypothesis", "payload": {"text": "Detectors detect_employee_address_match, detect_fast_pay_no_deliverable, detect_kickback_outflow, detect_new_vendor_round_amounts, detect_no_receipt match the kickback_shell signature; investigating.", "scheme_type": "kickback_shell"}}
 ```
 
 ### `tool_call` (LLM mode only)

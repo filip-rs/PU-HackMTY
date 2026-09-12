@@ -133,6 +133,31 @@ def test_no_llm_scores(dataset_dir, decoy_ids):
     }
 
 
+def test_fallback_hypothesis_names_the_detectors_that_fired(tmp_path, dataset_dir):
+    """#95: in a --no-llm run every hypothesis names the detectors that actually fired."""
+    from agent.investigate import run
+
+    log = tmp_path / "run.jsonl"
+    run(str(dataset_dir), out=None, log=str(log), no_llm=True)
+    entries = _read_log(log)
+
+    lead_dets: dict[str, set[str]] = {}
+    for e in entries:
+        if e["kind"] == "lead":
+            lead_dets[e["entity_id"]] = set(e["payload"].get("detectors", []))
+
+    hyps = [e for e in entries if e["kind"] == "hypothesis"]
+    assert hyps, "the fallback run on company_42 must produce at least one hypothesis"
+    for h in hyps:
+        text = h["payload"]["text"]
+        assert text.startswith("Detectors "), text
+        assert " match the " in text and "signature; investigating" in text, text
+        named = [d.strip() for d in text[len("Detectors ") :].split(" match the ")[0].split(",") if d.strip()]
+        assert named, f"hypothesis names no detectors: {text}"
+        fired = lead_dets.get(h["entity_id"], set())
+        assert set(named) <= fired, f"hypothesis names detectors that did not fire: {text} -> {fired}"
+
+
 def test_run_default_falls_back_without_env(dataset_dir, decoy_ids):
     """Without .env, settings() is None so the default run uses the fallback."""
     from agent.config import settings
