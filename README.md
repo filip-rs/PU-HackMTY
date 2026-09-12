@@ -37,7 +37,11 @@ python -m data_estate.score data_estate/out/company_42 case_file.json
 ## How work flows
 GitHub issues are the queue (`docs/ISSUES.md` is the mirror). Labels: `hermes-ok` the unattended Hermes agent
 may take it · `cc` Claude Code · `codex` Codex · `needs-human` a person decides. One issue per branch
-(`hermes/<n>`, `cc/<n>`, `codex/<n>`), PR title starts with `#<n>`, CI must be green, humans merge.
+(`hermes/<n>`, `cc/<n>`, `codex/<n>`), PR title starts with `#<n>`, CI must be green (required check on `master`).
+Hermes merges its own PRs once CI is green; humans merge everything else. Queue order and dependencies: `docs/PLAN.md`.
+
+The frontend is built outside this repo. Its contract with the backend is the step log (`docs/STEP_LOG.md`, #67)
+and the API server (`api/server.py`, #68); `demo/sample_trace.jsonl` is a real run to build against.
 
 The LLM runs on a teammate's HPC cluster approved for sensitive data. Dataset contents never go to any other
 provider (AGENTS.md rule 8).
