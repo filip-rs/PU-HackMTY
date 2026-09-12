@@ -82,7 +82,8 @@ agent/investigate.py             per unit: hypothesis → tool calls → record_
         │
 runs/<id>.jsonl                  step log, streamed line by line (#67) ── docs/STEP_LOG.md
 case_file.json                   findings[] + not_pursued[] → data_estate/score.py
-agent/report.py                  markdown: money trail, tax exposure, cleared leads
+submission.json (#88)            the judges' machine-checked JSON; their validate_format.py runs in CI
+report.html / .md (#90)          the five required sections; money trail as a diagram; opens offline
         │
 api/server.py (#68)              POST /runs · GET /runs/{id}/events (SSE) · /case · /report · /score
         │
@@ -153,6 +154,9 @@ followed by `python -m data_estate.score data_estate/out/company_42 /tmp/c.json`
    followed → accusation with rule + amount, or drop with a reason that names a record. Make sure at least one
    decoy is visibly cleared and, if it happens, one guard rejection followed by a corrected finding.
 3. **2:30–3:00** Surprise question. Rehearsed answers live in `demo/QA.md` (#31); the trace stays on screen.
+   Hand the judges `report.html` from that run: five sections, the money trail drawn as a diagram, every peso
+   reconciled to the exhibits beneath it. It is a single file with no script and no URL in it, so it opens on
+   their laptop with the Wi-Fi off — which is exactly what `case_file_structure.md` asks us to be able to show.
 
 Fallbacks, in order: cluster down → `no_llm: true` (same trace shape, deterministic findings); laptop trouble →
 replay `demo/sample_trace.jsonl` through the API.

@@ -45,8 +45,9 @@ from .detectors import run_all
 from .guard import _acceptable_evidence, _evidence_kind, guard
 from .leads import STRONG, aggregate
 from .llm import LLM, assistant_message, tool_message
+from .report import render_html
 from .rules import RULES
-from .submit import write_submission
+from .submit import build_submission, write_submission
 from .tools import TOOL_SCHEMAS, Tools
 
 # --- scheme signature -> evidence-guard rule --------------------------------
@@ -768,13 +769,13 @@ def _compute_run_metadata(use_llm: bool, llm: Any, wall: float) -> dict:
     }
 
 
-def _submission_path(submission: str | None, out: str | None) -> str:
-    """Where submission.json goes: as asked, else next to the case file. "" disables it."""
-    if submission == "":
+def _artifact_path(requested: str | None, out: str | None, default_name: str) -> str:
+    """Where a run's extra artifact goes: as asked, else next to the case file. "" disables it."""
+    if requested == "":
         return ""
-    if submission:
-        return submission
-    return str(Path(out).with_name("submission.json")) if out else ""
+    if requested:
+        return requested
+    return str(Path(out).with_name(default_name)) if out else ""
 
 
 def run(
@@ -787,13 +788,15 @@ def run(
     max_steps: int = 12,
     llm: Any = None,
     submission: str | None = None,
+    report: str | None = None,
     seed: int | None = None,
 ) -> dict:
     """Run the investigation; returns the case-file dict after writing it and the log.
 
-    ``submission`` writes the judges' ``submission.json`` (#88) next to the case file;
-    pass ``""`` to skip it. It is built from the case file, the estate and the step log,
-    so it never asserts anything the run did not already prove.
+    ``submission`` writes the judges' ``submission.json`` (#88) next to the case file and
+    ``report`` the five-section ``report.html`` (#90); pass ``""`` to skip either. Both are
+    built from the case file, the estate and the step log, so the three artifacts of a run
+    can never disagree with each other.
     """
     ds = load(dataset_dir)
     effective_llm = llm
@@ -854,10 +857,20 @@ def run(
         )
 
         _write_case_file(case, out)
-        submission_path = _submission_path(submission, out)
+        # rec.entries is the log this run just wrote, already parsed.
+        meta = {"seed": seed} if seed is not None else {}
+        built: dict | None = None
+        submission_path = _artifact_path(submission, out, "submission.json")
         if submission_path:
-            # rec.entries is the log this run just wrote, already parsed.
-            write_submission(case, ds, submission_path, rec.entries, {"seed": seed} if seed is not None else {})
+            built = write_submission(case, ds, submission_path, rec.entries, meta)
+        report_path = _artifact_path(report, out, "report.html")
+        if report_path:
+            if built is None:
+                built = build_submission(case, ds, rec.entries, meta)
+            Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(report_path).write_text(
+                render_html(case, ds, submission=built, log=rec.entries), encoding="utf-8"
+            )
         return case
     finally:
         rec.close()
@@ -876,6 +889,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="path for the judges' submission.json (default: next to --out; \"\" to skip)",
     )
+    parser.add_argument(
+        "--report",
+        default=None,
+        help="path for the five-section report.html (default: next to --out; \"\" to skip)",
+    )
     parser.add_argument("--seed", type=int, default=None, help="estate seed recorded in the submission")
     args = parser.parse_args(argv)
     case = run(
@@ -886,6 +904,7 @@ def main(argv: list[str] | None = None) -> int:
         max_leads=args.max_leads,
         max_steps=args.max_steps,
         submission=args.submission,
+        report=args.report,
         seed=args.seed,
     )
     print(json.dumps(case, ensure_ascii=False, indent=2))

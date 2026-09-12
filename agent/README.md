@@ -21,21 +21,22 @@ server.
 | `contract.py` | case-file contract validation (`findings[]`, `not_pursued[]`) (#14). |
 | `steplog.py` | the step-log contract as code: `KINDS`, `REQUIRED_PAYLOAD`, `parse_lines`, `validate_entries` (#67). |
 | `investigate.py` | the loop: detectors → units → (`--no-llm` fallback or LLM loop) → case file + step log (#13). |
-| `report.py` | human-readable case file: `render`, `exposure`, `money_trail` (#23). |
+| `report.py` | the case file a judge reads: five required sections, money trail as a diagram, Markdown + self-contained HTML (#23, #90). |
 | `submit.py` | the judges' `submission.json`: prefixed ids, exhibits with a `source_table`, money trail, confidence, declined leads (#88). |
 
 ## CLI commands
 
 All are run as `python -m agent.<module>`:
 
-- `python -m agent.investigate <estate> [--out case_file.json] [--log runs/T.jsonl] [--submission submission.json] [--seed N] [--max-leads 12] [--max-steps 12] [--no-llm]`
+- `python -m agent.investigate <estate> [--out case_file.json] [--log runs/T.jsonl] [--submission submission.json] [--report report.html] [--seed N] [--max-leads 12] [--max-steps 12] [--no-llm]`
   — `<estate>` is a legacy dataset dir, a judges' `estate.db` or a judges' CSV dir. `--submission` defaults to
-  `submission.json` next to `--out`; pass `--submission ""` to skip it.
+  `submission.json` next to `--out` and `--report` to `report.html`; pass `""` to skip either.
 - `python -m agent.submit <estate> <case_file.json> [--log run.jsonl] [--seed N] [--out submission.json]`
   — rebuild the judges' JSON from a case file that already exists.
 - `python -m agent.leads <dataset_dir> [--json] [--top N]`
 - `python -m agent.steplog <log_file>` — validate a step log ("OK N entries").
-- `python -m agent.report <dataset_dir> <case_file.json> [--out case_file.md] [--log runs/T.jsonl]`
+- `python -m agent.report <estate> <case_file.json> [--submission submission.json] [--out report.md] [--html report.html] [--log runs/T.jsonl]`
+  — the submission is rebuilt from the case file when not supplied, so the two artifacts cannot drift apart.
 - `python -m agent.guard <dataset_dir> <case_file.json>` and `python -m agent.contract <dataset_dir> <case_file.json>` for the guard / contract checks.
 
 The LLM client is only reachable when `.env` is configured (see `.env.example`
@@ -62,6 +63,9 @@ and `scripts/check_llm.py`); without it the default path is the deterministic
 - The human-readable report at `--out` of `agent.report`.
 - The judges' `submission.json` next to the case file (`--submission`), checked by
   their own validator: `python scripts/judges/validate_format.py --submission submission.json --estate estate.db`.
+- `report.html` next to the case file (`--report`): the five sections `case_file_structure.md`
+  requires, with the money trail drawn as inline SVG. No script, no external asset and no URL
+  anywhere in the file, so it opens from a file path with the network off — judges may ask.
 
 Two output contracts, both live. The case file (`findings[]`, `not_pursued[]`, our scheme
 types) is defined in `data_estate/score.py` and enforced by `agent/contract.py`. The
