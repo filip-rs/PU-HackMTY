@@ -6,6 +6,7 @@ with planted fraud schemes, honest-but-suspicious decoys, and a hidden ground tr
 ```bash
 python -m data_estate.generate --seed 42 --out data_estate/out/company_42     # all four schemes
 python -m data_estate.generate --seed 7 --schemes efos,kickback --out data_estate/out/demo
+python -m data_estate.generate --seed 100 --n 5 --out data_estate/out/batch_100  # 5 seeds: company_100..company_104
 python -m data_estate.generate --seed 5 --schemes "" --out data_estate/out/clean   # honest books, decoys only
 python -m data_estate.validate data_estate/out/company_42                    # integrity checks (run in CI)
 python -m data_estate.score data_estate/out/company_42 case_file.json        # score an agent's output

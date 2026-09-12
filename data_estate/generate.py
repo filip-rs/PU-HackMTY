@@ -16,6 +16,7 @@ Produces, for one fiscal year of a small Monterrey manufacturing company:
 Usage:
   python -m data_estate.generate --seed 42 --out out/company_42
   python -m data_estate.generate --seed 7 --schemes efos,kickback --out out/demo
+  python -m data_estate.generate --seed 100 --n 5 --out out/batch_100   # batch: out/company_100..company_104
 """
 from __future__ import annotations
 
@@ -804,17 +805,23 @@ def write_estate(e: Estate, out: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--n", type=int, default=1,
+                    help="number of consecutive seeds to generate (batch); --n 1 writes to --out directly")
     ap.add_argument("--out", type=Path, default=Path("out/company"))
     ap.add_argument("--schemes", default="efos,kickback,roundtrip,duplicate",
                     help="comma list from: efos,kickback,roundtrip,duplicate (empty string = clean books)")
     args = ap.parse_args()
+    if args.n < 1:
+        ap.error(f"--n must be >= 1 (got {args.n})")
     schemes = [s for s in args.schemes.split(",") if s]
-    e = Generator(args.seed).build(schemes)
-    write_estate(e, args.out)
-    print(f"wrote {args.out}: {len(e.suppliers)} suppliers, {len(e.invoices)} invoices, "
-          f"{len(e.bank)} bank txns, {len(e.ledger)} ledger lines, {len(e.counterparty_bank)} counterparty records")
-    print(f"planted: {[s['type'] for s in e.truth['schemes']]}  total {e.truth['meta']['total_planted_mxn']:,.2f} MXN")
-    print(f"decoys: {len(e.truth['decoys'])}")
+    for s in range(args.seed, args.seed + args.n):
+        out = args.out if args.n == 1 else args.out / f"company_{s}"
+        e = Generator(s).build(schemes)
+        write_estate(e, out)
+        print(f"wrote {out}: {len(e.suppliers)} suppliers, {len(e.invoices)} invoices, "
+              f"{len(e.bank)} bank txns, {len(e.ledger)} ledger lines, {len(e.counterparty_bank)} counterparty records")
+        print(f"planted: {[t['type'] for t in e.truth['schemes']]}  total {e.truth['meta']['total_planted_mxn']:,.2f} MXN")
+        print(f"decoys: {len(e.truth['decoys'])}")
 
 
 if __name__ == "__main__":
