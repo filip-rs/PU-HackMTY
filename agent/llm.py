@@ -98,6 +98,48 @@ class LLM:
         self.timeout = timeout
         self.max_retries = max_retries
 
+        # #89 run-metadata counters. `prompt_tokens` / `completion_tokens` count
+        # only *uncached* calls (a cached call cost 0), so mxn_cost is simply
+        # tokens x rates / 1000. `by_role` is keyed by the optional `role` kwarg
+        # on chat() ("investigator", "challenger", ...).
+        self.calls = 0
+        self.cached_calls = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.by_role: dict[str, dict] = {}
+
+    def stats(self) -> dict:
+        """#89: the run-metadata counters (calls, tokens, cost-relevant splits)."""
+        return {
+            "calls": self.calls,
+            "cached_calls": self.cached_calls,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "by_role": {k: dict(v) for k, v in self.by_role.items()},
+        }
+
+    def _count(self, reply: "Reply", role: str) -> None:
+        """Fold one reply into the #89 counters (uncached tokens only)."""
+        self.calls += 1
+        usage = reply.usage or {}
+        p = int(usage.get("prompt_tokens", 0) or 0)
+        c = int(usage.get("completion_tokens", 0) or 0)
+        if reply.cached:
+            self.cached_calls += 1
+        else:
+            self.prompt_tokens += p
+            self.completion_tokens += c
+        if role:
+            r = self.by_role.setdefault(
+                role, {"calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+            )
+            r["calls"] += 1
+            if reply.cached:
+                r["cached_calls"] += 1
+            else:
+                r["prompt_tokens"] += p
+                r["completion_tokens"] += c
+
     # -- cache -------------------------------------------------------------
     def _cache_enabled(self) -> bool:
         return self.cache_dir is not None and os.environ.get("LLM_CACHE", "1") != "0"
@@ -177,7 +219,7 @@ class LLM:
         raise RuntimeError("unreachable: all LLM retries exhausted")
 
     def chat(self, messages, tools: list[dict] | None = None, *, tool_choice: str | dict = "auto",
-             max_tokens: int = 8192) -> Reply:
+             max_tokens: int = 8192, role: str = "") -> Reply:
         # generous: reasoning models burn completion tokens on reasoning_content
         # before the answer starts, so a tight cap makes content come back null
         key = self._cache_key(messages, tools, tool_choice, max_tokens)
@@ -186,7 +228,9 @@ class LLM:
             cache_file = self.cache_dir / f"{key}.json"
             if cache_file.exists():
                 raw = json.loads(cache_file.read_text(encoding="utf-8"))
-                return self._build_reply(raw, cached=True)
+                reply = self._build_reply(raw, cached=True)
+                self._count(reply, role)
+                return reply
 
         raw = self._request(messages, tools, tool_choice, max_tokens)
 
@@ -196,7 +240,9 @@ class LLM:
                 json.dumps(raw, ensure_ascii=False, default=str), encoding="utf-8"
             )
 
-        return self._build_reply(raw, cached=False)
+        reply = self._build_reply(raw, cached=False)
+        self._count(reply, role)
+        return reply
 
 
 class FakeLLM:
@@ -204,15 +250,49 @@ class FakeLLM:
 
     Takes a list of :class:`Reply` objects (or callables ``messages -> Reply``) and
     returns them in order. Records every call in ``.calls``. Raises ``RuntimeError``
-    when it runs out. Used by tests of #13.
+    when it runs out. Used by tests of #13. Mirrors the #89 run-metadata counters
+    so ``stats()`` works the same as :class:`LLM`.
     """
 
     def __init__(self, replies) -> None:
         self._replies = list(replies)
         self.calls: list[dict] = []
+        self.cached_calls = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.by_role: dict[str, dict] = {}
+
+    def stats(self) -> dict:
+        return {
+            "calls": len(self.calls),
+            "cached_calls": self.cached_calls,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "by_role": {k: dict(v) for k, v in self.by_role.items()},
+        }
+
+    def _count(self, reply: Reply, role: str) -> None:
+        usage = reply.usage or {}
+        p = int(usage.get("prompt_tokens", 0) or 0)
+        c = int(usage.get("completion_tokens", 0) or 0)
+        if reply.cached:
+            self.cached_calls += 1
+        else:
+            self.prompt_tokens += p
+            self.completion_tokens += c
+        if role:
+            r = self.by_role.setdefault(
+                role, {"calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+            )
+            r["calls"] += 1
+            if reply.cached:
+                r["cached_calls"] += 1
+            else:
+                r["prompt_tokens"] += p
+                r["completion_tokens"] += c
 
     def chat(self, messages, tools: list[dict] | None = None, *, tool_choice: str | dict = "auto",
-             max_tokens: int = 8192) -> Reply:
+             max_tokens: int = 8192, role: str = "") -> Reply:
         self.calls.append(
             {"messages": list(messages), "tools": tools, "tool_choice": tool_choice, "max_tokens": max_tokens}
         )
@@ -220,5 +300,8 @@ class FakeLLM:
             raise RuntimeError("FakeLLM exhausted")
         reply = self._replies.pop(0)
         if callable(reply):
-            return reply(messages)
+            reply = reply(messages)
+        if not isinstance(reply, Reply):
+            raise TypeError(f"FakeLLM callable must return a Reply, got {type(reply).__name__}")
+        self._count(reply, role)
         return reply

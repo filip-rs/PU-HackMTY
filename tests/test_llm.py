@@ -222,6 +222,41 @@ def test_fake_llm_callable():
     assert len(fake.calls) == 1
 
 
+# ---- run-metadata counters (#89) --------------------------------------------
+
+def test_fake_llm_stats_counts_calls_tokens_and_role():
+    """#89: FakeLLM mirrors the counters; cached replies cost 0 tokens."""
+    r1 = Reply(text="a", tool_calls=[], cached=False, usage={"prompt_tokens": 10, "completion_tokens": 5}, raw={})
+    r2 = Reply(text="b", tool_calls=[], cached=False, usage={"prompt_tokens": 20, "completion_tokens": 6}, raw={})
+    r3 = Reply(text="c", tool_calls=[], cached=True, usage={"prompt_tokens": 7, "completion_tokens": 8}, raw={})
+    fake = FakeLLM([r1, r2, r3])
+    assert fake.chat([{"role": "user", "content": "x"}], role="investigator") is r1
+    assert fake.chat([{"role": "user", "content": "x"}], role="investigator") is r2
+    assert fake.chat([{"role": "user", "content": "x"}], role="investigator") is r3
+    s = fake.stats()
+    assert s["calls"] == 3
+    assert s["cached_calls"] == 1
+    assert s["prompt_tokens"] == 30  # r3 (cached) costs 0
+    assert s["completion_tokens"] == 11
+    assert s["by_role"]["investigator"]["calls"] == 3
+    assert s["by_role"]["investigator"]["cached_calls"] == 1
+    assert s["by_role"]["investigator"]["prompt_tokens"] == 30
+    assert s["by_role"]["investigator"]["completion_tokens"] == 11
+
+
+def test_llm_stats_counts_tokens_from_stub():
+    """#89: the real LLM counts a network call's usage into stats()."""
+    llm = LLM(_settings(), client=StubClient([chat_response(content="hi", usage={"prompt_tokens": 5, "completion_tokens": 3})]),
+              cache_dir=None)
+    llm.chat([{"role": "user", "content": "x"}], role="investigator")
+    s = llm.stats()
+    assert s["calls"] == 1
+    assert s["cached_calls"] == 0
+    assert s["prompt_tokens"] == 5
+    assert s["completion_tokens"] == 3
+    assert s["by_role"]["investigator"]["calls"] == 1
+
+
 # ---- message helpers -----------------------------------------------------
 
 def test_assistant_and_tool_messages():
