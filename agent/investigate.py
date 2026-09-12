@@ -11,8 +11,15 @@ Two execution paths share the same investigation units:
   known scheme signatures into findings through the *same* guard. This is the
   demo's safety net on stage and the path CI exercises.
 - LLM loop: the model proposes via the tool layer (#12); every
-  ``record_finding`` goes through the guard (#14); a rejected finding becomes a
-  ``drop_lead`` with the guard's reason.
+  ``record_finding`` goes through the guard (#14). A *rejected* finding is fed
+  back to the model (as a tool message with the guard's reasons and a hint) so
+  it can fix and retry, up to ``MAX_GUARD_RETRIES`` rejections. If the LLM
+  path ends without an accepted finding for a unit that carries a scheme
+  signature, the loop falls back to the deterministic ``_build_finding`` (so
+  ``--no-llm`` and LLM mode agree on the four known schemes) and labels the
+  provenance in the step log. Every ``record_finding`` decision and every
+  ``guard`` entry carries ``source`` (``llm`` | ``deterministic_fallback`` |
+  ``deterministic``) and ``attempt``.
 
 Amounts are the *full scheme aggregate* (the scorer's 25 % tolerance is on the
 whole scheme, not a single entity), so EFOS suppliers that share a signature are
@@ -60,6 +67,12 @@ _DATA_TOOL_NAMES = {
     "trace_flow",
     "query_ledger",
 }
+
+# Guard-rejection retry budget (#66): the LLM may attempt ``record_finding``
+# this many extra times after the first rejection; past that the loop falls
+# back to the deterministic ``_build_finding`` for a signature unit. So at most
+# ``MAX_GUARD_RETRIES + 1`` = 3 attempts per unit.
+MAX_GUARD_RETRIES = 2
 
 
 # --- step log ---------------------------------------------------------------
@@ -473,8 +486,16 @@ def _fallback_loop(
             rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
             dropped[eid] = reason
             continue
-        rec.emit("decision", eid, {"action": "record_finding", "finding": _llm_finding_payload(finding)})
-        rec.emit("guard", eid, {"accepted": True, "reasons": [], "finding": _llm_finding_payload(finding)})
+        rec.emit(
+            "decision",
+            eid,
+            {"action": "record_finding", "finding": _llm_finding_payload(finding), "source": "deterministic", "attempt": 1},
+        )
+        rec.emit(
+            "guard",
+            eid,
+            {"accepted": True, "reasons": [], "finding": _llm_finding_payload(finding), "source": "deterministic", "attempt": 1},
+        )
         findings.append(finding)
     return findings, dropped
 
@@ -507,17 +528,25 @@ def _llm_loop(
                 "leads": unit["lead_list"],
             },
         )
-        if not unit["scheme_hint"]:
+        hint = unit["scheme_hint"]
+        # Units without a scheme signature are dropped by rule, never by model.
+        if not hint:
             reason = _drop_reason(unit["members"][0], ds)
             rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
             dropped[eid] = reason
             continue
 
         messages = _build_messages(unit)
-        decision_made = False
-        steps = 0
         first = True
-        while not decision_made and steps < max_steps:
+        steps = 0
+        terminal = False
+        llm_outcome = ""  # "accepted" | "rejected" | "dropped" | "no_terminal" | "max_steps"
+        llm_reason = ""  # model's drop reason / last guard reasons / model text
+        rf_attempts = 0  # 1-based count of record_finding calls for this unit
+        rejections = 0  # count of record_finding calls rejected by the guard
+        accepted: dict | None = None
+
+        while not terminal and steps < max_steps:
             # generous completion budget: reasoning models burn tokens on
             # reasoning_content first, and a truncated record_finding call loses
             # scheme_type/rule and gets rejected by the guard
@@ -526,17 +555,17 @@ def _llm_loop(
                 rec.emit(
                     "hypothesis",
                     eid,
-                    {"text": reply.text or f"{unit['scheme_hint']} suspected.", "scheme_type": unit["scheme_hint"]},
+                    {"text": reply.text or f"{hint} suspected.", "scheme_type": hint},
                 )
                 first = False
             messages.append(assistant_message(reply))
             steps += 1
 
             if not reply.tool_calls:
-                reason = (reply.text or "").strip() or "no terminal tool call"
-                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
-                dropped[eid] = reason
-                decision_made = True
+                # The model replied with text and no terminal tool call.
+                llm_outcome = "no_terminal"
+                llm_reason = (reply.text or "").strip() or "no terminal tool call"
+                terminal = True
                 break
 
             for tc in reply.tool_calls:
@@ -552,30 +581,101 @@ def _llm_loop(
                     messages.append(tool_message(tc, result))
                 elif tc.name == "record_finding":
                     finding = dict(tc.args)
-                    rec.emit("decision", eid, {"action": "record_finding", "finding": finding})
+                    rf_attempts += 1
+                    rec.emit(
+                        "decision",
+                        eid,
+                        {"action": "record_finding", "finding": finding, "source": "llm", "attempt": rf_attempts},
+                    )
                     clean, reasons = guard(finding, ds)
                     rec.emit(
                         "guard",
                         eid,
-                        {"accepted": clean is not None, "reasons": reasons, "finding": _llm_finding_payload(clean) if clean else finding},
+                        {
+                            "accepted": clean is not None,
+                            "reasons": reasons,
+                            "finding": _llm_finding_payload(clean) if clean else finding,
+                            "source": "llm",
+                            "attempt": rf_attempts,
+                        },
                     )
                     if clean is not None:
-                        findings.append(clean)
-                    else:
-                        dropped[eid] = "; ".join(reasons) if reasons else "finding rejected by the evidence guard"
-                    decision_made = True
-                    break
+                        accepted = clean
+                        llm_outcome = "accepted"
+                        terminal = True
+                        break
+                    # Rejected: keep going. Feed the guard's reasons back as a
+                    # tool message so the model can fix the finding and retry,
+                    # and still execute any sibling data-tool calls in the reply.
+                    rejections += 1
+                    llm_reason = "; ".join(reasons) if reasons else "finding rejected by the evidence guard"
+                    messages.append(
+                        tool_message(
+                            tc,
+                            {
+                                "accepted": False,
+                                "reasons": reasons,
+                                "hint": "Fix the finding using these reasons and call record_finding again, or call drop_lead.",
+                            },
+                        )
+                    )
+                    if rejections > MAX_GUARD_RETRIES:
+                        llm_outcome = "rejected"
+                        terminal = True
+                        break
                 elif tc.name == "drop_lead":
                     reason = str(tc.args.get("reason", "dropped"))
                     rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
-                    dropped[eid] = reason
-                    decision_made = True
+                    llm_outcome = "dropped"
+                    llm_reason = reason
+                    terminal = True
                     break
 
-        if not decision_made:
-            reason = f"reached {max_steps} tool calls without a terminal decision"
-            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
-            dropped[eid] = reason
+        if not terminal and steps >= max_steps:
+            llm_outcome = "max_steps"
+            llm_reason = f"reached {max_steps} tool calls without a terminal decision"
+
+        if accepted is not None:
+            findings.append(accepted)
+            continue
+
+        # A signature unit whose LLM path ended without an accepted finding gets
+        # the deterministic finding, so LLM and --no-llm agree on the four known
+        # schemes. The model's own terminal decision (drop_lead) and its reasons
+        # are preserved in the log; the fallback is labelled as such.
+        rule_id = SCHEME_TO_RULE.get(hint)
+        if rule_id is not None:
+            scheme_type = hint
+            finding = _build_finding(unit, ds, scheme_type, rule_id)
+            if finding is None:
+                reason = "the aggregated scheme finding was rejected by the evidence guard"
+                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "llm_reason": llm_reason})
+                dropped[eid] = reason
+                continue
+            rec.emit(
+                "decision",
+                eid,
+                {
+                    "action": "record_finding",
+                    "finding": _llm_finding_payload(finding),
+                    "source": "deterministic_fallback",
+                    "llm_outcome": llm_outcome,
+                    "llm_reason": llm_reason,
+                },
+            )
+            rec.emit(
+                "guard",
+                eid,
+                {"accepted": True, "reasons": [], "finding": _llm_finding_payload(finding), "source": "deterministic_fallback"},
+            )
+            findings.append(finding)
+            continue
+
+        # Unreachable for signature hints (all four map to a rule); kept as a
+        # safe drop for a hint that is not in SCHEME_TO_RULE.
+        reason = _drop_reason(unit["members"][0], ds)
+        rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
+        dropped[eid] = reason
     return findings, dropped
 
 
