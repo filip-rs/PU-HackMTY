@@ -289,16 +289,16 @@ class Tools:
         """Bank transactions filtered by any combination of the keyword args."""
         if not len(self.ds.bank_transactions):
             return []
-        b = self.ds.bank_transactions
+        bank = self.ds.bank_transactions
         if counterparty_clabe:
-            b = b[b["counterparty_clabe"].astype(str) == str(counterparty_clabe)]
+            bank = bank[bank["counterparty_clabe"].astype(str) == str(counterparty_clabe)]
         if invoice_uuid:
-            b = b[b["invoice_uuid"].astype(str) == str(invoice_uuid)]
+            bank = bank[bank["invoice_uuid"].astype(str) == str(invoice_uuid)]
         if direction:
-            b = b[b["direction"].astype(str) == str(direction)]
-        b = b.sort_values(["fecha", "txn_id"]).head(limit)
+            bank = bank[bank["direction"].astype(str) == str(direction)]
+        bank = bank.sort_values(["fecha", "txn_id"]).head(limit)
         out: list[dict] = []
-        for r in b.itertuples(index=False):
+        for r in bank.itertuples(index=False):
             out.append({
                 "txn_id": str(r.txn_id),
                 "fecha": _iso(r.fecha),
@@ -317,16 +317,16 @@ class Tools:
         """Ledger rows filtered by any combination of the keyword args."""
         if not len(self.ds.ledger):
             return []
-        l = self.ds.ledger
+        ledger = self.ds.ledger
         if invoice_uuid:
-            l = l[l["invoice_uuid"].astype(str) == str(invoice_uuid)]
+            ledger = ledger[ledger["invoice_uuid"].astype(str) == str(invoice_uuid)]
         if txn_id:
-            l = l[l["txn_id"].astype(str) == str(txn_id)]
+            ledger = ledger[ledger["txn_id"].astype(str) == str(txn_id)]
         if account_code:
-            l = l[l["account_code"].astype(str) == str(account_code)]
-        l = l.sort_values(["fecha", "entry_id"]).head(limit)
+            ledger = ledger[ledger["account_code"].astype(str) == str(account_code)]
+        ledger = ledger.sort_values(["fecha", "entry_id"]).head(limit)
         out: list[dict] = []
-        for r in l.itertuples(index=False):
+        for r in ledger.itertuples(index=False):
             out.append({
                 "entry_id": str(r.entry_id),
                 "fecha": _iso(r.fecha),
