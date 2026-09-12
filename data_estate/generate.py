@@ -591,6 +591,14 @@ class Generator:
         rng = self.rng
         cands = [s for s in self.e.suppliers if s.category in ("materia_prima", "refacciones")
                  and not any(s.supplier_id in json.dumps(x) for x in self.e.truth["schemes"])]
+        if not cands:
+            scheme_sids = {ent.get("supplier_id") for sc in self.e.truth["schemes"]
+                           for ent in sc.get("entities", [])}
+            cands = [s for s in self.e.suppliers
+                     if sum(1 for i in self.e.invoices if i.counterparty_id == s.supplier_id) >= 3
+                     and s.supplier_id not in scheme_sids]
+            if not cands:
+                raise ValueError(f"seed {self.seed}: no candidate supplier for duplicate payment")
         s = rng.choice(cands)
         invs = [i for i in self.e.invoices if i.counterparty_id == s.supplier_id]
         picks = rng.sample(invs, min(3, len(invs)))
@@ -647,7 +655,10 @@ class Generator:
             "why_honest": "69-B is matched on RFC, not name. RFC differs; deliveries documented."})
 
         # D3: supplier at same address as another supplier (shared office park) — not the buyer's home
-        anchor = rng.choice([s for s in self.e.suppliers if s.category == "logistica"])
+        pool = ([s for s in self.e.suppliers if s.category == "logistica"]
+                or [s for s in self.e.suppliers if s.category in ("renta_util", "servicios")]
+                or self.e.suppliers)
+        anchor = rng.choice(pool)
         s3 = self.make_supplier("logistica", street=anchor.street, city=anchor.city)
         for _ in range(6):
             d = business_day(rand_date(rng, FY_START, FY_END - timedelta(days=10)))
@@ -672,8 +683,13 @@ class Generator:
                           "no 69-B match; no related-party links."})
 
         # D5: legit supplier paid partly in cash (forma_pago 01) — unusual but under the deductibility cap
-        s5 = rng.choice([s for s in self.e.suppliers if s.category == "consumibles"
-                         and s.supplier_id not in (s2.supplier_id,)])
+        scheme_sids = {ent.get("supplier_id") for sc in self.e.truth["schemes"]
+                       for ent in sc.get("entities", [])}
+        s5 = rng.choice(
+            [s for s in self.e.suppliers if s.category == "consumibles" and s.supplier_id != s2.supplier_id]
+            or [s for s in self.e.suppliers if s.category == "refacciones" and s.supplier_id != s2.supplier_id]
+            or [s for s in self.e.suppliers if s.supplier_id not in (s2.supplier_id,)
+                and s.supplier_id not in scheme_sids])
         for _ in range(3):
             d = business_day(rand_date(rng, FY_START, FY_END - timedelta(days=10)))
             self.purchase_invoice(s5, d, rng.uniform(800, 1_900), forma_pago="01", with_receipt=True)
