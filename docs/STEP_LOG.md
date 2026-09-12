@@ -161,10 +161,11 @@ A `drop_lead` decision:
 | `mxn_cost` | number | MXN cost at the reference hosted rate (0 for `--no-llm`) |
 | `cost_by_role` | object | per-role MXN cost, e.g. `{"investigator": ...}` |
 | `case_file` | string | where the case file was written (`""` when `--out` was omitted) |
-| `report` | string | where the report was written (`""` when no report) |
+| `report` | string | where `report.html` was written (`""` when `--report ""`) (#90) |
+| `submission` | string | where the judges' `submission.json` was written (`""` when `--submission ""`) (#88) |
 
 ```json
-{"ts": "2026-09-12T21:51:15+02:00", "entity_id": "", "step": 34, "kind": "run_end", "payload": {"n_findings": 4, "n_not_pursued": 14, "wall_s": 0.178, "llm_calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "mxn_cost": 0.0, "cost_by_role": {}, "case_file": "/tmp/sample_case.json", "report": ""}}
+{"ts": "2026-09-12T21:51:15+02:00", "entity_id": "", "step": 34, "kind": "run_end", "payload": {"n_findings": 4, "n_not_pursued": 14, "wall_s": 0.178, "llm_calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "mxn_cost": 0.0, "cost_by_role": {}, "case_file": "/tmp/sample_case.json", "report": "/tmp/report.html", "submission": "/tmp/submission.json"}}
 ```
 
 The case file itself gains a top-level `run_metadata` block with the same
