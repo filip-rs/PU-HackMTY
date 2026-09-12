@@ -303,3 +303,36 @@ def test_rejection_does_not_skip_sibling_tool_calls(tmp_path, dataset_dir):
     assert len(tool_msgs_after) == 2
     assert {m["tool_call_id"] for m in tool_msgs_after} == {"c1", "c2"}
     assert len(case["findings"]) == 1
+
+
+# --- #84: entangled scheme -> one dossier in two units -----------------------
+
+def test_entangled_dossier_yields_two_units():
+    """#84: an entity in two schemes contributes a unit to each matching group."""
+    from agent.investigate import _build_units
+
+    dossier = {
+        "entity_id": "S00001",
+        "kind": "supplier",
+        "name": "Entangled Vendor",
+        "detectors": ["detect_efos", "detect_round_trip"],
+        "n_detectors": 2,
+        "n_strong": 2,
+        "total_mxn": 100.0,
+        "evidence": [],
+        "n_evidence": 0,
+        "related": [],
+        "scheme_hints": ["efos_fake_supplier", "round_trip_sales"],
+        "scheme_hint": "efos_fake_supplier",
+        "leads": {},
+        "n_leads": 0,
+        "rank": 1,
+    }
+    units = _build_units([dossier])
+    assert len(units) == 2
+    assert {u["scheme_hint"] for u in units} == {"efos_fake_supplier", "round_trip_sales"}
+    for u in units:
+        assert u["entity_ids"] == ["S00001"]
+        assert u["members"] == [dossier]
+        # A single dossier that lands in two groups still yields one unit per group.
+        assert u["total_mxn"] == 100.0

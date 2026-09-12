@@ -80,3 +80,15 @@ def test_negative_direction_in(ds):
     neg = ds.counterparty_bank[ds.counterparty_bank["direction"] == "in"]
     swapped = dataclasses.replace(ds, counterparty_bank=neg)
     assert detect_kickback_outflow(swapped) == []
+
+
+def test_approver_link_and_same_bank_only_84(ds):
+    """#84 judge-shape fields: approver_link is set (approver == payee) and a real
+    transfer exists, so same_bank_only is False (never the weak same-institution
+    decoy pattern — that needs no transfer)."""
+    result = detect_kickback_outflow(ds)
+    assert len(result) == 1
+    lead = result[0]
+    assert lead["approver_link"] is True
+    assert lead["same_bank_only"] is False
+    assert lead["approver_link"] == lead["same_approver"]

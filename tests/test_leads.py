@@ -75,6 +75,33 @@ def test_scheme_hint_function():
     assert scheme_hint(set()) == ""
 
 
+def test_scheme_hints_list_detectors_84():
+    # #84: scheme_hints returns every matching signature in SIGNATURES order;
+    # scheme_hint stays the first for compatibility.
+    from agent.leads import scheme_hint, scheme_hints
+
+    # kickback fires on the outflow detector alone now (no address needed).
+    assert scheme_hints({"detect_kickback_outflow"}) == ["kickback_shell"]
+    assert scheme_hints({"detect_employee_address_match", "detect_kickback_outflow"}) == ["kickback_shell"]
+    assert scheme_hints({"detect_round_trip", "detect_efos"}) == ["efos_fake_supplier", "round_trip_sales"]
+    assert scheme_hints({"detect_employee_address_match"}) == []
+    assert scheme_hint({"detect_round_trip", "detect_efos"}) == "efos_fake_supplier"
+
+
+def test_dossier_carries_scheme_hints_list_84(ds):
+    # #84: a dossier exposes scheme_hints (all matching) and scheme_hint (first).
+    from agent.leads import aggregate
+
+    by_id = {d["entity_id"]: d for d in aggregate(ds)}
+    s4 = by_id["S00004"]
+    assert s4["scheme_hint"] == "kickback_shell"
+    assert s4["scheme_hints"] == ["kickback_shell"]
+    # Decoys (no complete signature) carry an empty list and an empty scheme_hint.
+    for pid in ("S00007", "S00026"):
+        assert by_id[pid]["scheme_hints"] == []
+        assert by_id[pid]["scheme_hint"] == ""
+
+
 def test_ids_valid_serializable_and_deterministic(ds):
     from agent.leads import aggregate
 
