@@ -144,3 +144,30 @@ Happened: all four planted schemes found (recall 1.0), zero decoys accused, and 
 old 25% tolerance the submission writer was silently rewriting amounts to fit.
 Changed: nothing — this is the first run where our output is checked by the judges' own code on the judges'
 own data shape rather than by our tests on ours.
+
+## 2026-09-12 18:10 · Two new schemes, and a frozen dataset that fought back
+Tried: #81 — plant `threshold_splitting` and `revenue_inflation` plus the two decoys that target them, so all
+five of the judges' scheme types exist in our data.
+Happened: both additions collided with the frozen estates in ways that were not obvious. Adding a `status`
+field to the `Invoice` dataclass would have added a column to `invoices.csv`, because the CSV writer takes its
+header from the dataclass — every byte of `company_42` would have moved. And adding the two new decoys
+unconditionally would have created two more suppliers, which changes the length of the list that `renumber()`
+shuffles, which reassigns **every** supplier id in the estate.
+Changed: cancellations live on `Estate.cancelled` (a set of uuids) instead of on the invoice row, and only the
+judges' export, whose schema has a `status` column, reads them. The two new decoys are opt-in, appended after
+the existing five so they consume RNG only after them, and they appear on any estate carrying a newer scheme.
+That is a deliberate deviation from "always present" in the issue: the frozen pair predates them, and a frozen
+artifact that quietly changes is worse than a decoy that appears in six estates out of seven.
+Lesson: a frozen dataset is not just a file, it is a constraint on the shape of every future change. Twice now
+the cheap-looking edit was the one that would have silently invalidated the demo dataset.
+
+## 2026-09-12 18:10 · The agent misses the new schemes, and that is the correct result
+Tried: an estate with all six schemes through the deterministic path, before the detectors for the two new
+ones exist.
+Happened: recall 4/6 — it found everything it has a detector for and missed `threshold_splitting` and
+`revenue_inflation`. Judgment penalty was **0**: the two new decoys (a supplier banking at the same
+institution as the purchasing manager, and twelve identical monthly invoices just under the approval limit)
+produced no false accusation, which is the property that actually matters.
+Changed: nothing. #82 and #83 build the two detectors. Recording it because it is the honest baseline the
+detector PRs will be measured against, and because "it found nothing and accused nobody" is the right failure
+mode for a system whose worst outcome is naming an innocent supplier.

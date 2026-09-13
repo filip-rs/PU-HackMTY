@@ -228,8 +228,9 @@ def _invoices(estate) -> list[dict]:
         "uso_cfdi": i.uso_cfdi,
         "forma_pago": i.forma_pago,
         "metodo_pago": i.metodo_pago,
-        # An estate may carry cancellations (revenue_inflation, #81); default vigente.
-        "status": getattr(i, "status", "") or "vigente",
+        # The judges' schema has a status column; our legacy CSV layout does not, so
+        # cancellations are tracked on the Estate (#81) and surface only here.
+        "status": "cancelado" if i.uuid in getattr(estate, "cancelled", ()) else "vigente",
     } for i in estate.invoices]
 
 
