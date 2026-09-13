@@ -235,6 +235,42 @@ def _policy_r6(finding: dict, ds: Dataset) -> list[str]:
     return list(dict.fromkeys(uuids))
 
 
+def _revenue_rows_for(ds: Dataset, customer_ids) -> list[dict]:
+    """The revenue-inflation detector rows of the given customers.
+
+    The amount and exhibit policy must agree with what the detector actually
+    finds, so both are computed by re-running it (pure, deterministic) and
+    filtering to the accused customers — never by re-deriving the flagging here.
+    """
+    from agent.detectors.revenue_inflation import detect_revenue_inflation
+
+    acc = set(customer_ids)
+    return [r for r in detect_revenue_inflation(ds) if str(r["entity_id"]) in acc]
+
+
+def _amount_r7(finding: dict, ds: Dataset) -> float:
+    """Revenue inflation: sum of the flagged (booked, never-collected) invoice totals.
+
+    The ``total_mxn`` a detector row carries is the sum of *that customer's*
+    flagged invoices, so the scheme aggregate is the sum across the accused
+    customers. The claim is the revenue that never arrived, not the whole sales
+    book: unbooked, collected sales are not part of it.
+    """
+    rows = _revenue_rows_for(ds, _strict_customers(finding, ds))
+    if not rows:
+        return 0.0
+    return round(sum(float(r["total_mxn"]) for r in rows), 2)
+
+
+def _policy_r7(finding: dict, ds: Dataset) -> list[str]:
+    """The flagged invoices' uuids — the records this rule's pesos are counted in."""
+    rows = _revenue_rows_for(ds, _strict_customers(finding, ds))
+    uuids: list[str] = []
+    for r in rows:
+        uuids.extend(str(u) for u in r["evidence"])
+    return list(dict.fromkeys(uuids))
+
+
 def _policy_none(finding: dict, ds: Dataset) -> list[str]:
     return []
 
@@ -322,6 +358,15 @@ RULES: dict[str, Rule] = {
         amount=_amount_r6,
         counted_table="invoices",
         exhibit_policy=_policy_r6,
+    ),
+    "R7": Rule(
+        id="R7",
+        scheme_types=frozenset({"revenue_inflation"}),
+        legal="Ingresos simulados / reconocimiento indebido de ingresos; CFF Art. 69-B / 113 Bis; NIF D-1 (ingresos)",
+        evidence_kinds=frozenset({"invoice"}),
+        amount=_amount_r7,
+        counted_table="invoices",
+        exhibit_policy=_policy_r7,
     ),
 }
 

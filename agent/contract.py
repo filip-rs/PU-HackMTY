@@ -20,6 +20,7 @@ SCHEME_TYPES = {
     "round_trip_sales",
     "duplicate_invoice_payment",
     "threshold_splitting",
+    "revenue_inflation",
     "other",
 }
 

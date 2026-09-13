@@ -30,6 +30,7 @@ STRONG: frozenset[str] = frozenset(
         "detect_duplicate_payments",
         "detect_clabe_not_on_master",
         "detect_threshold_splitting",
+        "detect_revenue_inflation",
     }
 )
 
@@ -46,6 +47,7 @@ SIGNATURES: list[tuple[frozenset[str], str]] = [
     (frozenset({"detect_round_trip"}), "round_trip_sales"),
     (frozenset({"detect_duplicate_payments", "detect_clabe_not_on_master"}), "duplicate_invoice_payment"),
     (frozenset({"detect_threshold_splitting"}), "threshold_splitting"),
+    (frozenset({"detect_revenue_inflation"}), "revenue_inflation"),
 ]
 
 
