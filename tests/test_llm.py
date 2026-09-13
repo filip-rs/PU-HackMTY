@@ -181,6 +181,28 @@ def test_cache_hit_and_miss(tmp_path, monkeypatch):
     assert llm.client.chat.completions.calls == 3
 
 
+def test_cache_write_is_atomic(tmp_path):
+    """#71: a cache write leaves no .tmp behind, and a torn cache file is a miss."""
+    llm = LLM(_settings(), client=StubClient([], factory=lambda kw: chat_response(content="ok")), cache_dir=tmp_path)
+    messages = [{"role": "user", "content": "hi"}]
+    r1 = llm.chat(messages)
+    assert r1.text == "ok"
+    cache_files = [p for p in tmp_path.iterdir() if p.suffix == ".json"]
+    assert len(cache_files) == 1
+    # the atomic write (tmp -> os.replace) must not leave a temp file behind
+    assert not list(tmp_path.glob("*.tmp"))
+
+    # a torn cache file is treated as a cache miss -> a fresh network call
+    cache_files[0].write_text("{ this is not valid json", encoding="utf-8")
+    calls_before = llm.client.chat.completions.calls
+    r2 = llm.chat(messages)
+    assert r2.text == "ok"
+    assert r2.cached is False
+    assert llm.client.chat.completions.calls == calls_before + 1
+    # the torn file was repaired into a valid cache entry, still no temp left
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 # ---- retries -------------------------------------------------------------
 
 def test_retries_then_success(monkeypatch):

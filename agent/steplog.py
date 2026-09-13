@@ -184,27 +184,35 @@ def validate_entries(entries: list[dict]) -> list[str]:
                         "(the 'suspicious' tier; the reason is the declined-lead narrative)"
                     )
 
-    # Ordering relationships.
-    for i, e in enumerate(entries):
-        kind = e.get("kind")
-        label = f"entry {e.get('step', '?')}"
-        if i == 0:
-            continue
-        prev = entries[i - 1]
-        if kind == "guard":
-            if (
-                prev.get("kind") != "decision"
-                or prev.get("payload", {}).get("action") != "record_finding"
-                or prev.get("entity_id") != e.get("entity_id")
-            ):
-                errors.append(f"{label}: a guard must immediately follow a record_finding decision for the same entity")
-        if kind == "tool_result":
-            if (
-                prev.get("kind") != "tool_call"
-                or prev.get("payload", {}).get("name") != e.get("payload", {}).get("name")
-                or prev.get("entity_id") != e.get("entity_id")
-            ):
-                errors.append(f"{label}: a tool_result must immediately follow a matching tool_call (same name, same entity)")
+    # Ordering relationships, checked per entity subsequence. A concurrent
+    # writer (#71) may interleave *other* entities' entries between one unit's
+    # own tool_call and tool_result, or between its decision and guard, so the
+    # adjacency contract holds within an entity's own subsequence, not globally.
+    by_entity: dict[str, list[dict]] = {}
+    for e in entries:
+        by_entity.setdefault(str(e.get("entity_id", "")), []).append(e)
+    for eid, sub in by_entity.items():
+        for j, e in enumerate(sub):
+            kind = e.get("kind")
+            label = f"entry {e.get('step', '?')} (entity {eid or '(run)'})"
+            if kind == "guard":
+                if (
+                    j == 0
+                    or sub[j - 1].get("kind") != "decision"
+                    or sub[j - 1].get("payload", {}).get("action") != "record_finding"
+                ):
+                    errors.append(
+                        f"{label}: a guard must immediately follow a record_finding decision in the same entity's sequence"
+                    )
+            if kind == "tool_result":
+                if (
+                    j == 0
+                    or sub[j - 1].get("kind") != "tool_call"
+                    or sub[j - 1].get("payload", {}).get("name") != e.get("payload", {}).get("name")
+                ):
+                    errors.append(
+                        f"{label}: a tool_result must immediately follow a matching tool_call (same name) in the same entity's sequence"
+                    )
 
     # Every lead must later be the subject of at least one decision.
     decision_entities: set[str] = set()
