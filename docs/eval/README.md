@@ -12,7 +12,10 @@ against decoys are weighted at least as heavily."*
 | **Reporting** | **901–910** | Never run until the evaluation below. This is the "records it has never seen" number |
 
 The two sets are disjoint. `scripts/eval_batch.py` refuses seed 42 outright, because its answer file is
-committed in the repo and it is therefore not unseen.
+committed in the repo and it is therefore not unseen. And `--report` (the only flag that produces the
+slide table) refuses the whole tuning set `TUNING_SEEDS = {42, 101–110, 201–205, 301–306}` (#86) — a hard
+guard, so a reporting table cannot silently quote a seed we tuned on. The set is a named constant in the
+script, so it stays in sync with this table.
 
 ## Results, deterministic path (`--no-llm`), 2026-09-12
 
@@ -82,3 +85,32 @@ python scripts/eval_batch.py --seeds 901-910 --schemes random --no-llm --out /tm
 
 The generator is deterministic, so the same seed rebuilds the same estate and the same case file. The
 command line that produced each table is recorded at the bottom of that table.
+
+## The judges' results table (#86)
+
+The pack defines one answer-key shape, two numbers that matter (recall and false-accusation rate), a 2%
+peso rule, and a results table with fixed columns (`results_table_template.csv`). Our harness now speaks
+that shape directly instead of our internal metrics.
+
+`--format judges` generates each estate to the judges' schema (`estate.db` + `csv/`, #80), runs the agent
+on `estate.db`, builds the judges' `submission.json` (#88), and scores *that* submission — so the number is
+measured on the same schema and same output shape the judges use, not on our CSV layout and case file.
+
+`--report` writes `results_table.csv` (in the template's exact columns) plus a `TOTAL` row, and refuses
+the tuning seeds so the reporting table cannot quote a seed we tuned on.
+
+```bash
+python scripts/eval_batch.py --seeds 901-902 --report --no-llm --format judges \
+    --csv data_estate/out/results_table.csv
+```
+
+The columns are the template's verbatim:
+
+```
+seed,schemes_planted,schemes_found,recall_pct,decoys_planted,decoys_accused,
+false_accusation_rate_pct,peso_claimed,peso_actual,peso_reconciles,llm_calls,mxn_cost,wall_clock_s
+```
+
+`peso_reconciles` is the judges' 2% per-table rule: every finding's `peso_amount` reconciles to the sum of
+its cited exhibits' amounts, per table, within 2% (shared implementation in `agent/reconcile.py`, #87).
+
