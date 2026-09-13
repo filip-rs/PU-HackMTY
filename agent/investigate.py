@@ -26,7 +26,14 @@ whole scheme, not a single entity), so EFOS suppliers that share a signature are
 grouped into one finding. LLM access is only through ``agent.llm.LLM`` built from
 ``agent.config.settings()`` (#22) — never an HTTP client here.
 
-CLI: ``python -m agent.investigate <dataset_dir> [--out case_file.json] [--log runs/T.jsonl] [--max-leads 12] [--max-steps 12] [--no-llm]``
+Weak leads (no scheme signature) have three outcomes (#70): they are *cleared*
+when the records support an innocent explanation, *escalated* to the model (up to
+``max_escalations``) so a scheme we did not plan for can still be found, or
+*unverified* and dropped. An ``other`` finding the guard accepts is never an
+accusation — it is parked as a "suspicious, unproven" entry in ``not_pursued``
+(the R5 rule has no amount recomputation, so it cannot be proven).
+
+CLI: ``python -m agent.investigate <dataset_dir> [--out case_file.json] [--log runs/T.jsonl] [--max-leads 12] [--max-steps 12] [--max-escalations 4] [--no-llm]``
 or ``python -m agent.investigate --replay <log.jsonl|case_file.json> [--out ...]`` to rebuild a
 run offline from its step log (never constructs an LLM, works with Wi-Fi off; #93).
 """
@@ -284,14 +291,16 @@ def _build_finding(unit: dict, ds: Dataset, scheme_type: str, rule_id: str) -> d
 # explanation; otherwise the reason is an honest "unverified".
 
 
-def _drop_reason(dossier: dict, ds: Dataset) -> tuple[str, bool]:
+def _drop_reason(dossier: dict, ds: Dataset) -> tuple[str, bool, list[str]]:
     """Why this entity was not pursued, from checks that cite records (#69).
 
     For each detector on the dossier, :func:`agent.clear.clear_reason` returns a
     grounded innocent explanation when the records support it and ``None`` when
-    it cannot be confirmed. Returns ``(reason, verified)`` — ``verified`` is
-    False exactly when at least one detector fired and the innocent explanation
-    could not be confirmed, which becomes an honest ``"unverified: ..."`` reason.
+    it cannot be confirmed. Returns ``(reason, verified, unverified_dets)`` —
+    ``verified`` is False exactly when at least one detector fired and the
+    innocent explanation could not be confirmed, which becomes an honest
+    "unverified: ..." reason; ``unverified_dets`` is the list of detectors
+    that returned ``None`` (used by #70's escalation prompt).
     """
     eid = str(dossier.get("entity_id") or "")
     dets = sorted(set(dossier.get("detectors", [])))
@@ -308,26 +317,42 @@ def _drop_reason(dossier: dict, ds: Dataset) -> tuple[str, bool]:
             f"unverified: {', '.join(unverified)} fired and the innocent explanation "
             "could not be confirmed from the records; needs a human or a deeper investigation"
         )
-        return reason, False
+        return reason, False, unverified
     if not reasons:
-        return "no corroborating scheme signature matched", True
-    return "; ".join(reasons), True
+        return "no corroborating scheme signature matched", True, []
+    return "; ".join(reasons), True, []
 
 
 def _build_not_pursued(
-    dossiers: list[dict], ds: Dataset, findings: list[dict], dropped: dict[str, str]
+    dossiers: list[dict],
+    ds: Dataset,
+    findings: list[dict],
+    dropped: dict[str, str],
+    parked: dict[str, str] | None = None,
 ) -> list[dict]:
+    """Why the remaining leads were not pursued, in the case-file contract.
+
+    ``parked`` (#70) comes first — an ``other`` finding the guard accepted is
+    recorded as a "suspicious, unproven" entry, never an accusation. Then
+    ``dropped`` (the per-unit reason the loop already decided), then the
+    per-dossier grounded ``_drop_reason``. Every parked entry carries
+    ``closed_by`` so #88/#94 can export it exactly as the judges' schema wants.
+    """
+    parked = parked or {}
     accused: set[str] = set()
     for f in findings:
-        accused.update(f["accused"])
+        accused.update(f.get("accused", []))
     out: list[dict] = []
     for d in dossiers:
-        eid = d["entity_id"]
+        eid = str(d["entity_id"])
         if eid in accused:
+            continue
+        if eid in parked:
+            out.append({"entity": eid, "reason": parked[eid], "closed_by": "investigator"})
             continue
         reason = dropped.get(eid)
         if reason is None:
-            reason, _ = _drop_reason(d, ds)
+            reason, _verified, _dets = _drop_reason(d, ds)
         out.append({"entity": eid, "reason": reason})
     out.sort(key=lambda x: x["entity"])
     return out
@@ -471,7 +496,7 @@ TERMINAL_TOOLS = [RECORD_FINDING_SCHEMA, DROP_LEAD_SCHEMA]
 # --- the two execution paths -------------------------------------------------
 def _fallback_loop(
     ds: Dataset, units: list[dict], rec: _Log, max_leads: int
-) -> tuple[list[dict], dict[str, str]]:
+) -> tuple[list[dict], dict[str, str], dict[str, str]]:
     """Deterministic no-LLM path: scheme signatures -> findings via the guard."""
     findings: list[dict] = []
     dropped: dict[str, str] = {}
@@ -492,13 +517,13 @@ def _fallback_loop(
         )
         hint = unit["scheme_hint"]
         if not hint:
-            reason, verified = _drop_reason(unit["members"][0], ds)
-            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
+            reason, verified, _dets = _drop_reason(unit["members"][0], ds)
+            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified, "escalated": False})
             dropped[eid] = reason
             continue
         rule_id = SCHEME_TO_RULE.get(hint)
         if rule_id is None:
-            reason, verified = _drop_reason(unit["members"][0], ds)
+            reason, verified, _dets = _drop_reason(unit["members"][0], ds)
             rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
             dropped[eid] = reason
             continue
@@ -531,7 +556,44 @@ def _fallback_loop(
             {"accepted": True, "reasons": [], "finding": _llm_finding_payload(finding), "source": "deterministic", "attempt": 1},
         )
         findings.append(finding)
-    return findings, dropped
+    return findings, dropped, {}
+
+
+def _escalation_prompt(unverified_dets: list[str]) -> str:
+    """The line appended to a weak lead's prompt when it is escalated (#70).
+
+    The rule list is generated from ``RULES`` (SondreTH's note) so that R6/R7
+    (arriving with #82/#83) are named automatically, and only the real rules
+    (scheme types other than ``other``/R5) are listed for the model to claim.
+    """
+    rule_ids = ", ".join(sorted(rid for rid, r in RULES.items() if "other" not in r.scheme_types))
+    dets = ", ".join(unverified_dets) or "the fired detectors"
+    return (
+        "No scheme signature matched. The automatic clearing check could not confirm an "
+        f"innocent explanation for: {dets}. Investigate with the tools. Call record_finding "
+        f"only if one of {rule_ids} is fully evidenced with record IDs and the full amount; call "
+        "record_finding with scheme_type 'other' and rule 'R5' if something is wrong but it is "
+        "none of those; otherwise call drop_lead with what you checked."
+    )
+
+
+def _park_finding(clean: dict, rec, parked: dict[str, str]) -> None:
+    """Record an accepted ``other`` finding as a "suspicious, unproven" declined lead (#70).
+
+    An ``other`` finding has no amount recomputation (R5), so it must never become
+    an accusation; instead it enters ``not_pursued`` as a suspicious tier. One
+    ``park_lead`` decision is emitted per accused entity, and the reason is stored
+    in ``parked`` so ``_build_not_pursued`` can emit it with ``closed_by``.
+    """
+    narr = clean.get("narrative") or "the model flagged this entity"
+    ev = [str(e) for e in clean.get("evidence", [])]
+    ev_txt = ", ".join(ev[:5])
+    if len(ev) > 5:
+        ev_txt += f" and {len(ev) - 5} more"
+    reason = f"suspicious, unproven: {narr}." + (f" Evidence: {ev_txt}" if ev_txt else "")
+    for a in clean["accused"]:
+        rec.emit("decision", a, {"action": "park_lead", "tier": "suspicious", "entity_id": a, "reason": reason})
+        parked[str(a)] = reason
 
 
 def _llm_loop(
@@ -541,11 +603,25 @@ def _llm_loop(
     rec: _Log,
     max_leads: int,
     max_steps: int,
-) -> tuple[list[dict], dict[str, str]]:
+    max_escalations: int,
+) -> tuple[list[dict], dict[str, str], dict[str, str]]:
+    """Run the model investigation per unit and return ``(findings, dropped, parked)``.
+
+    A signature unit is investigated as usual; a rejected ``record_finding`` is fed
+    back and, past the retry budget, the deterministic finding is used (#66). A weak
+    lead (no scheme signature) has three outcomes (#70): *cleared* (the records
+    confirm an innocent explanation and it is dropped, ``escalated: false``),
+    *escalated* (unverified, and the first ``max_escalations`` in rank order are
+    investigated by the model so an unplanned scheme can still be found), or
+    *unverified* (dropped past the cap). An accepted ``other`` finding is parked, not
+    accused. ``parked`` maps an entity to the "suspicious, unproven" reason.
+    """
     findings: list[dict] = []
     dropped: dict[str, str] = {}
+    parked: dict[str, str] = {}
     tools = Tools(ds)
     all_tools = TOOL_SCHEMAS + TERMINAL_TOOLS
+    escalated_count = 0  # weak leads already escalated this run (#70 cap)
 
     for unit in units[:max_leads]:
         eid = unit["entity_id"]
@@ -563,14 +639,31 @@ def _llm_loop(
             },
         )
         hint = unit["scheme_hint"]
-        # Units without a scheme signature are dropped by rule, never by model.
+        # A weak lead (no scheme signature) is either cleared by the records,
+        # escalated to the model (#70), or dropped as unverified. Signature
+        # units always go to the model.
+        escalated = False
+        unverified_dets: list[str] = []
         if not hint:
-            reason, verified = _drop_reason(unit["members"][0], ds)
-            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
-            dropped[eid] = reason
-            continue
+            reason, verified, unverified_dets = _drop_reason(unit["members"][0], ds)
+            if verified:
+                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": True, "escalated": False})
+                dropped[eid] = reason
+                continue
+            if escalated_count >= max_escalations:
+                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": False, "escalated": False})
+                dropped[eid] = reason
+                continue
+            escalated_count += 1
+            escalated = True
 
         messages = _build_messages(unit)
+        if escalated:
+            # The model investigates an unverified weak lead with an extra line
+            # naming what the automatic check could not clear and when to call
+            # record_finding vs. drop_lead.
+            u = messages[1]
+            messages[1] = {"role": "user", "content": u["content"] + "\n" + _escalation_prompt(unverified_dets)}
         first = True
         steps = 0
         terminal = False
@@ -590,8 +683,8 @@ def _llm_loop(
                     "hypothesis",
                     eid,
                     {
-                        "text": reply.text or f"{hint} suspected.",
-                        "scheme_type": hint,
+                        "text": reply.text or (f"{hint} suspected." if hint else "weak lead escalated to the model; investigating."),
+                        "scheme_type": hint or "unconfirmed",
                         "derived_from": unit["detectors"],
                     },
                 )
@@ -623,7 +716,7 @@ def _llm_loop(
                     rec.emit(
                         "decision",
                         eid,
-                        {"action": "record_finding", "finding": finding, "source": "llm", "attempt": rf_attempts},
+                        {"action": "record_finding", "finding": finding, "source": "llm", "attempt": rf_attempts, "escalated": escalated},
                     )
                     clean, reasons = guard(finding, ds)
                     rec.emit(
@@ -635,9 +728,17 @@ def _llm_loop(
                             "finding": _llm_finding_payload(clean) if clean else finding,
                             "source": "llm",
                             "attempt": rf_attempts,
+                            "escalated": escalated,
                         },
                     )
                     if clean is not None:
+                        if clean["scheme_type"] == "other":
+                            # An `other` finding has no amount recomputation, so
+                            # it is parked as suspicious, never an accusation (#70).
+                            _park_finding(clean, rec, parked)
+                            llm_outcome = "parked"
+                            terminal = True
+                            break
                         accepted = clean
                         llm_outcome = "accepted"
                         terminal = True
@@ -663,7 +764,7 @@ def _llm_loop(
                         break
                 elif tc.name == "drop_lead":
                     reason = str(tc.args.get("reason", "dropped"))
-                    rec.emit("decision", eid, {"action": "drop_lead", "reason": reason})
+                    rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "escalated": escalated})
                     llm_outcome = "dropped"
                     llm_reason = reason
                     terminal = True
@@ -675,6 +776,26 @@ def _llm_loop(
 
         if accepted is not None:
             findings.append(accepted)
+            continue
+
+        # An escalated weak lead gets no deterministic fallback (#70): the model
+        # either proved a scheme, parked an `other`, or we drop it here.
+        if escalated:
+            if llm_outcome == "parked":
+                continue
+            dets = ", ".join(unverified_dets) or "unknown detectors"
+            if llm_outcome == "rejected":
+                final_reason = f"unverified: {dets} (model: {llm_reason or 'no narrative'})"
+                rec.emit("decision", eid, {"action": "drop_lead", "reason": final_reason, "escalated": True})
+                dropped[eid] = final_reason
+            elif llm_outcome == "dropped":
+                # the drop_lead decision was already emitted with the model reason
+                dropped[eid] = llm_reason
+            else:
+                # no_terminal / max_steps: no terminal decision was emitted yet
+                final_reason = llm_reason or f"unverified: {dets}"
+                rec.emit("decision", eid, {"action": "drop_lead", "reason": final_reason, "escalated": True})
+                dropped[eid] = final_reason
             continue
 
         # A signature unit whose LLM path ended without an accepted finding gets
@@ -711,10 +832,10 @@ def _llm_loop(
 
         # Unreachable for signature hints (all four map to a rule); kept as a
         # safe drop for a hint that is not in SCHEME_TO_RULE.
-        reason, verified = _drop_reason(unit["members"][0], ds)
+        reason, verified, _dets = _drop_reason(unit["members"][0], ds)
         rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
         dropped[eid] = reason
-    return findings, dropped
+    return findings, dropped, parked
 
 
 # --- entry points -----------------------------------------------------------
@@ -798,6 +919,7 @@ def run(
     no_llm: bool = False,
     max_leads: int = 12,
     max_steps: int = 12,
+    max_escalations: int = 4,
     llm: Any = None,
     submission: str | None = None,
     report: str | None = None,
@@ -835,12 +957,12 @@ def run(
         t0 = time.time()
 
         if use_llm and effective_llm is not None:
-            findings, dropped = _llm_loop(ds, units, effective_llm, rec, max_leads, max_steps)
+            findings, dropped, parked = _llm_loop(ds, units, effective_llm, rec, max_leads, max_steps, max_escalations)
         else:
-            findings, dropped = _fallback_loop(ds, units, rec, max_leads)
+            findings, dropped, parked = _fallback_loop(ds, units, rec, max_leads)
 
         findings.sort(key=lambda f: (f["scheme_type"], f["accused"]))
-        not_pursued = _build_not_pursued(dossiers, ds, findings, dropped)
+        not_pursued = _build_not_pursued(dossiers, ds, findings, dropped, parked)
         case: dict = {"findings": findings, "not_pursued": not_pursued}
 
         errors = validate_case_file(case, ds)
@@ -988,8 +1110,21 @@ def replay(
         if eid:
             dropped[eid] = str(payload.get("reason") or "dropped")
 
+    # parked map from the log's park_lead decisions (#70) — an `other` finding
+    # the guard accepted, rebuilt as a "suspicious, unproven" not_pursued entry.
+    parked: dict[str, str] = {}
+    for e in entries:
+        if e["kind"] != "decision":
+            continue
+        payload = e["payload"] or {}
+        if payload.get("action") != "park_lead":
+            continue
+        pid = str(payload.get("entity_id") or e.get("entity_id") or "")
+        if pid:
+            parked[pid] = str(payload.get("reason") or "suspicious, unproven")
+
     dossiers = aggregate(ds, run_all(ds))
-    not_pursued = _build_not_pursued(dossiers, ds, findings, dropped)
+    not_pursued = _build_not_pursued(dossiers, ds, findings, dropped, parked)
     case: dict = {"findings": findings, "not_pursued": not_pursued}
 
     errors = validate_case_file(case, ds)
@@ -1031,6 +1166,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log", default=None)
     parser.add_argument("--max-leads", type=int, default=12)
     parser.add_argument("--max-steps", type=int, default=12)
+    parser.add_argument("--max-escalations", type=int, default=4,
+                        help="how many weak leads (no scheme signature) the model may investigate (#70)")
     parser.add_argument("--no-llm", action="store_true")
     parser.add_argument(
         "--submission",
@@ -1068,6 +1205,7 @@ def main(argv: list[str] | None = None) -> int:
             no_llm=args.no_llm,
             max_leads=args.max_leads,
             max_steps=args.max_steps,
+            max_escalations=args.max_escalations,
             submission=args.submission,
             report=args.report,
             seed=args.seed,

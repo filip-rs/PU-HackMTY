@@ -422,3 +422,211 @@ def test_entangled_dossier_yields_two_units():
         assert u["members"] == [dossier]
         # A single dossier that lands in two groups still yields one unit per group.
         assert u["total_mxn"] == 100.0
+
+
+# --- #70: escalate unverified weak leads; park 'other' findings ----------------
+
+def _keep_units(*entity_ids):
+    """Wrap _build_units to keep only the units for the given entities."""
+    import agent.investigate as inv
+
+    ids = set(entity_ids)
+    real = inv._build_units
+
+    def wrapped(dossiers):
+        return [u for u in real(dossiers) if u["entity_id"] in ids]
+
+    return wrapped
+
+
+def _clear_none_for(*detectors):
+    """Wrap clear_reason to return None for the named detectors, else real."""
+    import agent.investigate as inv
+
+    real = inv.clear_reason
+
+    def wrapped(det, eid, leads, ds):
+        if det in detectors:
+            return None
+        return real(det, eid, leads, ds)
+
+    return wrapped
+
+
+def test_unverified_weak_lead_is_escalated(tmp_path, dataset_dir, monkeypatch):
+    """#70: a weak lead whose innocent explanation cannot be confirmed is escalated."""
+    import agent.investigate as inv
+    from agent.investigate import run
+
+    monkeypatch.setattr(inv, "_build_units", _keep_units("S00026"))
+    monkeypatch.setattr(inv, "clear_reason", _clear_none_for("detect_shared_supplier_address"))
+
+    log = tmp_path / "run.jsonl"
+    replies = [
+        Reply(
+            text="checking the freight supplier.",
+            tool_calls=[ToolCall(id="c1", name="get_supplier", args={"supplier_id": "S00026"})],
+            cached=False,
+            usage={},
+            raw={},
+        ),
+        Reply(
+            text="",
+            tool_calls=[ToolCall(id="c2", name="drop_lead", args={"entity_id": "S00026", "reason": "freight company, carta porte on every invoice"})],
+            cached=False,
+            usage={},
+            raw={},
+        ),
+    ]
+    case = run(str(dataset_dir), out=None, log=str(log), llm=FakeLLM(replies))
+
+    entries = _read_log(log)
+    from agent.steplog import validate_entries
+    assert validate_entries(entries) == []
+    assert any(e["kind"] == "tool_call" and e["entity_id"] == "S00026" and e["payload"]["name"] == "get_supplier" for e in entries)
+    drops = [e for e in entries if e["kind"] == "decision" and e["payload"].get("action") == "drop_lead"]
+    assert drops[-1]["payload"]["reason"] == "freight company, carta porte on every invoice"
+    assert drops[-1]["payload"]["escalated"] is True
+    assert case["findings"] == []
+    pursued = {e["entity"]: e["reason"] for e in case["not_pursued"]}
+    assert pursued["S00026"] == "freight company, carta porte on every invoice"
+
+
+def test_verified_weak_lead_not_escalated(tmp_path, dataset_dir, monkeypatch):
+    """#70: a weak lead the records clear is dropped without the model ever seeing it."""
+    import agent.investigate as inv
+    from agent.investigate import run
+
+    monkeypatch.setattr(inv, "_build_units", _keep_units("S00009"))
+
+    log = tmp_path / "run.jsonl"
+    fake = FakeLLM([])
+    case = run(str(dataset_dir), out=None, log=str(log), llm=fake)
+
+    assert fake.calls == []
+    entries = _read_log(log)
+    drops = [e for e in entries if e["kind"] == "decision" and e["payload"].get("action") == "drop_lead"]
+    assert drops[0]["payload"]["verified"] is True
+    assert drops[0]["payload"]["escalated"] is False
+    assert case["findings"] == []
+
+
+def test_other_finding_is_parked_not_accused(tmp_path, dataset_dir, ds, monkeypatch):
+    """#70: an accepted `other` finding is parked as suspicious, never accused."""
+    import agent.investigate as inv
+    from agent.investigate import run
+
+    monkeypatch.setattr(inv, "_build_units", _keep_units("S00026"))
+    monkeypatch.setattr(inv, "clear_reason", _clear_none_for("detect_shared_supplier_address"))
+
+    rec = ds.invoices[(ds.invoices["tipo"] == "recibida") & (ds.invoices["counterparty_id"] == "S00026")]
+    assert len(rec), "S00026 must have a recibida invoice for the fake evidence"
+    uuid = str(rec.iloc[0]["uuid"])
+
+    log = tmp_path / "run.jsonl"
+    reply = Reply(
+        text="",
+        tool_calls=[ToolCall(
+            id="c1",
+            name="record_finding",
+            args={
+                "scheme_type": "other",
+                "accused": ["S00026"],
+                "rule": "R5",
+                "amount_mxn": 1.0,
+                "evidence": [uuid],
+                "narrative": "odd freight pattern",
+            },
+        )],
+        cached=False,
+        usage={},
+        raw={},
+    )
+    case = run(str(dataset_dir), out=None, log=str(log), llm=FakeLLM([reply]))
+
+    assert case["findings"] == []
+    pursued = {e["entity"]: e for e in case["not_pursued"]}
+    assert "S00026" in pursued
+    reason = pursued["S00026"]["reason"]
+    assert reason.startswith("suspicious, unproven: odd freight pattern")
+    assert uuid in reason
+    assert pursued["S00026"].get("closed_by") == "investigator"
+
+    entries = _read_log(log)
+    from agent.steplog import validate_entries
+    assert validate_entries(entries) == []
+    parks = [e for e in entries if e["kind"] == "decision" and e["payload"].get("action") == "park_lead"]
+    assert parks and parks[0]["payload"]["tier"] == "suspicious"
+
+    from data_estate.score import score
+    res = score(dataset_dir, case)
+    assert res["judgment_penalty"] == 0
+    assert res["decoys_accused"] == []
+
+
+def test_escalation_cap(tmp_path, dataset_dir, monkeypatch):
+    """#70: only the first N unverified weak leads in rank order are escalated."""
+    import agent.investigate as inv
+    from agent.investigate import run
+
+    monkeypatch.setattr(inv, "_build_units", _keep_units("S00026", "S00009"))
+    monkeypatch.setattr(inv, "clear_reason", lambda det, eid, leads, ds: None)
+
+    log = tmp_path / "run.jsonl"
+    reply = Reply(
+        text="",
+        tool_calls=[ToolCall(id="c1", name="drop_lead", args={"entity_id": "S00009", "reason": "not enough"})],
+        cached=False,
+        usage={},
+        raw={},
+    )
+    fake = FakeLLM([reply])
+    case = run(str(dataset_dir), out=None, log=str(log), llm=fake, max_escalations=1)
+
+    # S00009 is first in rank order, so it is the one escalated (1 model call);
+    # S00026 exceeds the cap and is dropped unverified without a model call.
+    assert len(fake.calls) == 1
+    entries = _read_log(log)
+    drops = {e["entity_id"]: e["payload"] for e in entries if e["kind"] == "decision" and e["payload"].get("action") == "drop_lead"}
+    assert drops["S00009"]["escalated"] is True
+    assert drops["S00026"]["escalated"] is False
+    assert str(drops["S00026"]["reason"]).startswith("unverified:")
+    assert case["findings"] == []
+
+
+def test_rejected_other_after_retries_is_unverified(tmp_path, dataset_dir, monkeypatch):
+    """#70: a rejected `other` finding past the retry budget is dropped unverified."""
+    import agent.investigate as inv
+    from agent.investigate import run
+
+    monkeypatch.setattr(inv, "_build_units", _keep_units("S00026"))
+    monkeypatch.setattr(inv, "clear_reason", _clear_none_for("detect_shared_supplier_address"))
+
+    log = tmp_path / "run.jsonl"
+
+    def _rejected(i):
+        return Reply(
+            text="",
+            tool_calls=[ToolCall(
+                id=f"c{i}",
+                name="record_finding",
+                args={
+                    "scheme_type": "other",
+                    "accused": ["S00026"],
+                    "rule": "R5",
+                    "amount_mxn": 1.0,
+                    "evidence": ["TX99999"],  # does not exist -> guard rejects
+                    "narrative": "odd freight pattern",
+                },
+            )],
+            cached=False,
+            usage={},
+            raw={},
+        )
+
+    case = run(str(dataset_dir), out=None, log=str(log), llm=FakeLLM([_rejected(1), _rejected(2), _rejected(3)]))
+    assert case["findings"] == []
+    pursued = {e["entity"]: e["reason"] for e in case["not_pursued"]}
+    assert str(pursued["S00026"]).startswith("unverified:")
+    entries = _read_log(log)
+    assert not any(e["kind"] == "guard" and e["payload"].get("accepted") for e in entries)

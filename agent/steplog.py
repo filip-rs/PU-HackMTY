@@ -177,6 +177,12 @@ def validate_entries(entries: list[dict]) -> list[str]:
             elif action == "drop_lead":
                 if not isinstance(payload.get("reason"), str):
                     errors.append(f"entry {e.get('step', '?')}: decision drop_lead requires a 'reason' string")
+            elif action == "park_lead":
+                if not isinstance(payload.get("tier"), str) or not isinstance(payload.get("reason"), str):
+                    errors.append(
+                        f"entry {e.get('step', '?')}: decision park_lead requires 'tier' and 'reason' strings "
+                        "(the 'suspicious' tier; the reason is the declined-lead narrative)"
+                    )
 
     # Ordering relationships.
     for i, e in enumerate(entries):

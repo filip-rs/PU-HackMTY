@@ -69,3 +69,17 @@ Changed: `_drop_reason` returns `(reason, verified)`; `_DET_CLAUSES` is gone; `a
 that answers "how do you know?". The check is only as good as the date-filtered records it reads, so a hand-edited
 judge estate that breaks one of the innocent assumptions now surfaces `unverified:` (and #70 escalates it) instead of
 a false "cleared".
+
+## 2026-09-13 02:05 · An `other` finding is parked, never accused
+Tried: #70 — escalate unverified weak leads to the model (up to `--max-escalations`, default 4) so a scheme we did
+not plan for can still be found, and turn an accepted `other` finding into a "suspicious, unproven" `not_pursued`
+entry instead of a finding.
+Happened: the R5 (`other`) rule has no amount recomputation (the guard skips the 25% check for it), so there is no
+defensible peso figure to put in a finding — and a decoy accused as `other` would still cost the double decoy penalty
+on top. So an entity the model flags as `other` is parked as suspicious, with the model's narrative and evidence ids,
+and `closed_by: investigator` so #88/#94 export it into `leads_not_pursued` exactly.
+Changed: `_llm_loop` escalates the first N unverified weak leads in rank order (SondreTH's note: the escalation prompt
+names the real rules from `RULES`, so R6/R7 auto-join); `park_lead` is a new `decision` action in `docs/STEP_LOG.md`
+and `agent/steplog.py`; `_drop_reason` now returns the unverified detectors too. Note: the issue's literal
+`test_escalation_cap` expected S00009 to be *un*-escalated, but rank order puts S00009 before S00026 — the test was
+written to the actual "first N in rank order" behaviour.

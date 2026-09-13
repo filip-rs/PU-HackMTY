@@ -117,7 +117,7 @@ Example (the very first line of a run):
 
 | field | type | meaning |
 |---|---|---|
-| `action` | string | `record_finding` or `drop_lead` |
+| `action` | string | `record_finding`, `drop_lead` or `park_lead` |
 | `finding` | object | only for `record_finding`: `{scheme_type, accused[ids], rule, amount_mxn, evidence[ids], narrative}` |
 | `reason` | string | only for `drop_lead`: why the lead was dropped |
 | `source` | string | extra: `llm` / `deterministic` / `deterministic_fallback` |
@@ -131,6 +131,14 @@ A `drop_lead` decision:
 
 ```json
 {"ts": "2026-09-12T21:51:15+02:00", "entity_id": "S00024", "step": 19, "kind": "decision", "payload": {"action": "drop_lead", "reason": "the 69-B list is matched on RFC, not on name — this RFC is not on it; the invoices without a goods receipt are for a category where a receipt is not mandatory; the shared address is a commercial building, not an employee's home"}}
+```
+
+A `park_lead` decision (#70): an `other` finding the evidence guard accepted is
+never accused — it becomes a "suspicious, unproven" declined lead. One per
+accused entity; `tier` is `suspicious` and `reason` is the declined-lead story:
+
+```json
+{"ts": "2026-09-12T21:51:15+02:00", "entity_id": "S00026", "step": 21, "kind": "decision", "payload": {"action": "park_lead", "tier": "suspicious", "entity_id": "S00026", "reason": "suspicious, unproven: odd freight pattern. Evidence: BFEEB533-ACF5-9149-B1C9-D0DCA38CC35F"}}
 ```
 
 ### `guard`
