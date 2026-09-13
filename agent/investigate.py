@@ -977,7 +977,7 @@ def run(
     max_leads: int = 12,
     max_steps: int = 12,
     max_escalations: int = 4,
-    workers: int = 1,
+    workers: int = 4,
     llm: Any = None,
     submission: str | None = None,
     report: str | None = None,
@@ -1226,7 +1226,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-steps", type=int, default=12)
     parser.add_argument("--max-escalations", type=int, default=4,
                         help="how many weak leads (no scheme signature) the model may investigate (#70)")
-    parser.add_argument("--workers", type=int, default=1,
+    parser.add_argument("--workers", type=int, default=4,
                         help="investigate units concurrently (#71); workers=1 is byte-identical to sequential")
     parser.add_argument("--no-llm", action="store_true")
     parser.add_argument(
