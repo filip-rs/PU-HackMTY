@@ -810,16 +810,27 @@ def main():
     ap.add_argument("--out", type=Path, default=Path("out/company"))
     ap.add_argument("--schemes", default="efos,kickback,roundtrip,duplicate",
                     help="comma list from: efos,kickback,roundtrip,duplicate (empty string = clean books)")
+    ap.add_argument("--format", choices=("legacy", "judges"), default="legacy",
+                    help="legacy = our CSV layout (default); judges = estate_schema.sql "
+                         "(estate.db + csv/), see data_estate/export_judges.py")
     args = ap.parse_args()
     if args.n < 1:
         ap.error(f"--n must be >= 1 (got {args.n})")
     schemes = [s for s in args.schemes.split(",") if s]
     for s in range(args.seed, args.seed + args.n):
-        out = args.out if args.n == 1 else args.out / f"company_{s}"
+        stem = "estate" if args.format == "judges" else "company"
+        out = args.out if args.n == 1 else args.out / f"{stem}_{s}"
         e = Generator(s).build(schemes)
-        write_estate(e, out)
-        print(f"wrote {out}: {len(e.suppliers)} suppliers, {len(e.invoices)} invoices, "
-              f"{len(e.bank)} bank txns, {len(e.ledger)} ledger lines, {len(e.counterparty_bank)} counterparty records")
+        if args.format == "judges":
+            from .export_judges import write_judges_estate
+            tables = write_judges_estate(e, out, seed=s, company=COMPANY)
+            print(f"wrote {out} (judges' schema): "
+                  + ", ".join(f"{len(rows)} {name}" for name, rows in tables.items()))
+        else:
+            write_estate(e, out)
+            print(f"wrote {out}: {len(e.suppliers)} suppliers, {len(e.invoices)} invoices, "
+                  f"{len(e.bank)} bank txns, {len(e.ledger)} ledger lines, "
+                  f"{len(e.counterparty_bank)} counterparty records")
         print(f"planted: {[t['type'] for t in e.truth['schemes']]}  total {e.truth['meta']['total_planted_mxn']:,.2f} MXN")
         print(f"decoys: {len(e.truth['decoys'])}")
 
