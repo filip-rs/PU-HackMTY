@@ -71,6 +71,7 @@ SCHEME_TO_RULE: dict[str, str] = {
     "kickback_shell": "R2",
     "round_trip_sales": "R3",
     "duplicate_invoice_payment": "R4",
+    "threshold_splitting": "R6",
 }
 
 _DATA_TOOL_NAMES = {
@@ -952,8 +953,8 @@ def _investigate_unit(
         )
         return [finding], {}, {}
 
-    # Unreachable for signature hints (all four map to a rule); kept as a safe drop
-    # for a hint that is not in SCHEME_TO_RULE.
+    # Keep a safe drop for a hint that is not in SCHEME_TO_RULE (an unplanned scheme
+    # the model found but no rule covers); known signatures all map to a rule.
     reason, verified, _dets = _drop_reason(unit["members"][0], ds)
     rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
     return [], {eid: reason}, {}

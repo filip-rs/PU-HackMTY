@@ -19,6 +19,7 @@ SCHEME_TYPES = {
     "kickback_shell",
     "round_trip_sales",
     "duplicate_invoice_payment",
+    "threshold_splitting",
     "other",
 }
 
