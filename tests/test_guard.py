@@ -32,8 +32,8 @@ def _ref_finding(ds, scheme_type: str) -> dict:
 
 # --- rule catalog -------------------------------------------------------------
 
-def test_rule_catalog_has_r1_to_r6():
-    assert set(RULES) == {"R1", "R2", "R3", "R4", "R5", "R6"}
+def test_rule_catalog_has_r1_to_r7():
+    assert set(RULES) == {"R1", "R2", "R3", "R4", "R5", "R6", "R7"}
     for rule in RULES.values():
         assert isinstance(rule, Rule)
         assert rule.id == rule.id
@@ -49,6 +49,7 @@ def test_rule_scheme_types_match_contract():
     assert RULES["R4"].scheme_types == frozenset({"duplicate_invoice_payment"})
     assert RULES["R5"].scheme_types == frozenset({"other"})
     assert RULES["R6"].scheme_types == frozenset({"threshold_splitting"})
+    assert RULES["R7"].scheme_types == frozenset({"revenue_inflation"})
 
 
 def test_rule_legal_strings_match_reference_file():
