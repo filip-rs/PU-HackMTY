@@ -58,6 +58,17 @@ def validate_case_file(case: dict, ds: Dataset) -> list[str]:
         not_pursued_entities.add(entity)
         if not isinstance(row.get("reason"), str) or not row.get("reason"):
             errors.append(f"not_pursued[{i}].reason: must be a non-empty string")
+        # #94: optional bookkeeping on a declined lead. Only validated when present,
+        # so a case file written before this schema addition still validates.
+        signal = row.get("signal")
+        if signal is not None and (not isinstance(signal, list) or not all(isinstance(s, str) for s in signal)):
+            errors.append(f"not_pursued[{i}].signal: must be a list of strings when present")
+        tool_calls = row.get("tool_calls_made")
+        if tool_calls is not None and (not isinstance(tool_calls, list) or not all(isinstance(t, str) for t in tool_calls)):
+            errors.append(f"not_pursued[{i}].tool_calls_made: must be a list of strings when present")
+        closed_by = row.get("closed_by")
+        if closed_by is not None and closed_by not in ("investigator", "challenger", "validator"):
+            errors.append(f"not_pursued[{i}].closed_by: {closed_by!r} not one of investigator/challenger/validator")
 
     accused_entities: set[str] = set()
     for i, finding in enumerate(findings):
