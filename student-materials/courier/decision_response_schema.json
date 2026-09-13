@@ -1,0 +1,92 @@
+{
+  "_about": "The response contract for your decision endpoint. Judges' tooling reads these fields by name. If your field names differ, supply a one-page mapping in your README.",
+  "_latency_budget_ms": 50,
+  "_why": "A courier has roughly 5 seconds to decide in the real app. The fast path must fit far inside that, leaving room for network and UI. Any code path that calls an LLM inside the decision window fails Feasibility.",
+
+  "decide_request": {
+    "description": "What judges POST. Fields match order_offered in event_log_schema.json. courier_state_overrides may be present to set up a specific state before the ping.",
+    "_illustrative": {
+      "order_id": "ORD-0001",
+      "platform": "rappi",
+      "sim_time": "2026-03-21T18:42:00",
+      "zone_pickup": 7,
+      "zone_dropoff": 11,
+      "distance_pickup_km": 1.4,
+      "distance_delivery_km": 6.5,
+      "base_pay_mxn": 58.0,
+      "surge_multiplier": 1.3,
+      "weight_kg": 2.1,
+      "volume_liters": 6.0,
+      "vehicle": "moto",
+      "courier_state_overrides": {
+        "continuous_riding_min": 0,
+        "shift_elapsed_hours": 3.7,
+        "last_break_end_time": null,
+        "shift_end_time": "2026-03-21T23:00:00",
+        "in_flight_orders": []
+      }
+    }
+  },
+
+  "decide_response": {
+    "type": "object",
+    "required": ["order_id", "decision", "reason", "latency_ms"],
+    "properties": {
+      "order_id":   {"type": "string"},
+      "decision":   {"enum": ["ACCEPT", "SKIP"]},
+      "reason":     {"type": "string", "maxWords": 40,
+                     "description": "Human-readable, naming the constraint that actually bound. This string is read aloud during your demo."},
+      "binding_constraint": {
+                     "type": ["string", "null"],
+                     "enum": ["flagged_zone_night", "mandatory_break", "heat_rule",
+                              "shift_end_infeasible", "vehicle_capacity",
+                              "reservation_wage", null],
+                     "description": "Machine-readable constraint id; null when the decision came from pay criteria alone. This is what lets judges distinguish a safety refusal from pay math without parsing prose."},
+      "latency_ms": {"type": "number"},
+      "tier":       {"enum": ["tier1", "tier2"],
+                     "description": "Which layer produced this. Safety constraints are expected from the fast path."},
+      "degraded":   {"type": "boolean",
+                     "description": "True when operating on a stale strategy because the model is unreachable."},
+      "economics":  {
+        "type": "object",
+        "description": "Optional. The numeric basis for the decision. Judges may pause on a decision and ask for the arithmetic.",
+        "properties": {
+          "net_pay_mxn":             {"type": "number"},
+          "total_time_min":          {"type": "number"},
+          "raw_rate_mxn_hr":         {"type": "number"},
+          "adjusted_rate_mxn_hr":    {"type": "number"},
+          "reservation_wage_mxn_hr": {"type": "number"},
+          "deadhead_km":             {"type": "number"}
+        }
+      }
+    },
+    "_illustrative": [
+      {"order_id": "ORD-0001", "decision": "ACCEPT",
+       "reason": "<under 40 words, naming what decided it>",
+       "binding_constraint": null, "latency_ms": 6, "tier": "tier1", "degraded": false},
+      {"order_id": "ORD-0002", "decision": "SKIP",
+       "reason": "<under 40 words, naming the constraint that bound>",
+       "binding_constraint": "vehicle_capacity", "latency_ms": 3, "tier": "tier1", "degraded": false}
+    ]
+  },
+
+  "explain_decision_response": {
+    "description": "Looked up by order_id after the fact. Judges ask 'why did you skip that order' and expect an answer in under 10 seconds from a log, not from re-running your system.",
+    "type": "object",
+    "required": ["order_id", "decision", "reason", "inputs", "alternatives_considered"],
+    "properties": {
+      "order_id": {"type": "string"},
+      "decision": {"enum": ["ACCEPT", "SKIP"]},
+      "reason":   {"type": "string"},
+      "inputs":   {"type": "object",
+                   "description": "Full numeric state at decision time: position, time_remaining, time_to_completion, active strategy parameters, in-flight orders."},
+      "alternatives_considered": {
+        "type": "array",
+        "description": "What else was on the table and why it lost.",
+        "items": {"type": "object",
+                  "required": ["option", "rejected_because"],
+                  "properties": {"option": {"type": "string"},
+                                 "rejected_because": {"type": "string"}}}}
+    }
+  }
+}

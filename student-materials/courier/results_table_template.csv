@@ -1,0 +1,15 @@
+# Results criterion, Courier. Fill this in and put it on one slide.
+# Rules that decide the score:
+#   * Reporting seeds must be DISJOINT from the seeds you tuned on. Name both sets.
+#   * At least 10 held-out shifts for the top bands.
+#   * An upper-bound row (an offline solver with full knowledge of the order stream)
+#     lets you state what fraction of the theoretical optimum you captured.
+#   * safety_violations must be 0 for your agent.
+# Rows are the baselines to compare against. Columns are the required shape.
+policy,mean_earnings_mxn,median_earnings_mxn,mean_mxn_per_hr,accept_rate_pct,orders_completed,deadhead_pct_of_km,deadline_misses,safety_violations
+AcceptAll,,,,,,,,
+HighestPay,,,,,,,,
+NearestFirst,,,,,,,,
+GreedyRate,,,,,,,,
+OurAgent,,,,,,,,
+Oracle,,,,,,,,

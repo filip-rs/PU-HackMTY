@@ -1,0 +1,132 @@
+{
+  "_about": "The simulator event format. Your simulator emits these; your decision loop and UI consume them. This is a FORMAT SPEC, not a dataset - you build the simulator and generate the order stream yourself.",
+  "_why_an_event_log": "Decoupling the simulator from the renderer via an event log is what makes replay mode possible. Judges may ask you to reproduce a completed shift with the network disabled.",
+  "_serialization": "JSON Lines - one JSON object per line, one event per line, in chronological order.",
+
+  "event_types": {
+
+    "shift_start": {
+      "required": ["event", "sim_time", "seed", "shift_hours", "vehicle", "start_location_zone", "shift_end_time"],
+      "fields": {
+        "event":               {"const": "shift_start"},
+        "sim_time":            {"type": "string", "format": "ISO 8601 datetime"},
+        "seed":                {"type": "integer", "description": "The shift seed. Must reproduce an identical order stream."},
+        "shift_hours":         {"type": "number"},
+        "vehicle":             {"enum": ["moto", "car", "bike"]},
+        "start_location_zone": {"type": "integer"},
+        "shift_end_time":      {"type": "string", "description": "Read from state, never hardcoded - judges check this."},
+        "fuel_mxn_per_km":     {"type": "number"}
+      },
+      "_illustrative": {
+        "event": "shift_start", "sim_time": "2026-03-21T15:00:00", "seed": 1,
+        "shift_hours": 8, "vehicle": "moto", "start_location_zone": 7,
+        "shift_end_time": "2026-03-21T23:00:00", "fuel_mxn_per_km": 1.2
+      }
+    },
+
+    "order_offered": {
+      "required": ["event", "order_id", "sim_time", "zone_pickup", "zone_dropoff",
+                   "distance_pickup_km", "distance_delivery_km", "base_pay_mxn",
+                   "surge_multiplier", "vehicle"],
+      "fields": {
+        "event":                {"const": "order_offered"},
+        "order_id":             {"type": "string"},
+        "platform":             {"enum": ["rappi", "didi", "uber"]},
+        "sim_time":             {"type": "string"},
+        "decision_deadline":    {"type": "string", "description": "Typically sim_time + 5 seconds."},
+        "zone_pickup":          {"type": "integer"},
+        "zone_dropoff":         {"type": "integer"},
+        "zone_pickup_name":     {"type": "string", "description": "Optional, for display."},
+        "zone_dropoff_name":    {"type": "string"},
+        "distance_pickup_km":   {"type": "number", "description": "Deadhead from current position."},
+        "distance_delivery_km": {"type": "number"},
+        "base_pay_mxn":         {"type": "number"},
+        "est_tip_mxn":          {"type": "number"},
+        "surge_multiplier":     {"type": "number"},
+        "restaurant_prep_min":  {"type": "number"},
+        "weight_kg":            {"type": "number", "description": "Required for vehicle capacity checks."},
+        "volume_liters":        {"type": "number", "description": "Required for vehicle capacity checks."},
+        "vehicle":              {"enum": ["moto", "car", "bike"]},
+        "estimated_pickup_min":   {"type": "number", "description": "Optional; if absent, derive from distance and speed."},
+        "estimated_delivery_min": {"type": "number"}
+      },
+      "_illustrative": [
+        {"event": "order_offered", "order_id": "ORD-0001", "platform": "rappi",
+         "sim_time": "2026-03-21T18:42:00", "decision_deadline": "2026-03-21T18:42:05",
+         "zone_pickup": 7, "zone_dropoff": 11, "distance_pickup_km": 1.4,
+         "distance_delivery_km": 6.5, "base_pay_mxn": 58.0, "est_tip_mxn": 12.0,
+         "surge_multiplier": 1.3, "restaurant_prep_min": 9, "weight_kg": 2.1,
+         "volume_liters": 6.0, "vehicle": "moto"},
+        {"event": "order_offered", "order_id": "ORD-0002", "platform": "didi",
+         "sim_time": "2026-03-21T19:07:00", "decision_deadline": "2026-03-21T19:07:05",
+         "zone_pickup": 5, "zone_dropoff": 5, "distance_pickup_km": 0.6,
+         "distance_delivery_km": 1.8, "base_pay_mxn": 41.0, "est_tip_mxn": 4.0,
+         "surge_multiplier": 1.0, "restaurant_prep_min": 5, "weight_kg": 1.0,
+         "volume_liters": 3.5, "vehicle": "moto"}
+      ]
+    },
+
+    "decision": {
+      "required": ["event", "order_id", "sim_time", "decision", "reason", "latency_ms"],
+      "description": "Your system's answer to an order_offered. Mirrors the /decide response contract in decision_response_schema.json.",
+      "_illustrative": {
+        "event": "decision", "order_id": "ORD-0002", "sim_time": "2026-03-21T19:07:00",
+        "decision": "SKIP", "reason": "<under 40 words, naming the binding constraint>",
+        "binding_constraint": "reservation_wage", "latency_ms": 6, "tier": "tier1"
+      }
+    },
+
+    "position_update": {
+      "required": ["event", "sim_time", "zone", "status"],
+      "fields": {
+        "status": {"enum": ["idle", "to_pickup", "waiting", "to_dropoff", "on_break"]}
+      },
+      "_illustrative": {"event": "position_update", "sim_time": "2026-03-21T19:15:00",
+                        "zone": 11, "status": "to_dropoff"}
+    },
+
+    "earnings_update": {
+      "required": ["event", "sim_time", "earnings_mxn", "orders_completed"],
+      "_illustrative": {"event": "earnings_update", "sim_time": "2026-03-21T19:30:00",
+                        "earnings_mxn": 412.5, "orders_completed": 7, "mxn_per_hr": 91.7}
+    },
+
+    "shock": {
+      "required": ["event", "sim_time", "shock_type"],
+      "description": "A mid-shift disruption. The brief requires at least one during your demo. Judges may inject these live.",
+      "fields": {
+        "shock_type": {"enum": ["surge", "closure", "rain", "delay"]},
+        "zone":        {"type": "integer", "description": "surge and closure"},
+        "multiplier":  {"type": "number",  "description": "surge"},
+        "road":        {"type": "string",  "description": "closure"},
+        "order_id":    {"type": "string",  "description": "delay - which order slipped"},
+        "slip_min":    {"type": "number",  "description": "delay"},
+        "duration_min":{"type": "number"}
+      },
+      "_illustrative": [
+        {"event": "shock", "sim_time": "2026-03-21T18:20:00", "shock_type": "surge",
+         "zone": 11, "multiplier": 1.6, "duration_min": 25},
+        {"event": "shock", "sim_time": "2026-03-21T19:40:00", "shock_type": "rain",
+         "duration_min": 45}
+      ]
+    },
+
+    "strategy_update": {
+      "required": ["event", "sim_time", "reservation_wage_mxn_hr"],
+      "description": "Emitted when the strategy layer revises its parameters. Runs between pings, never inside a decision window.",
+      "_illustrative": {
+        "event": "strategy_update", "sim_time": "2026-03-21T18:20:00",
+        "reservation_wage_mxn_hr": 185, "target_zone": 11,
+        "reasoning": "<under 40 words - this string is displayed on screen>",
+        "confidence": "high", "degraded": false
+      }
+    },
+
+    "shift_end": {
+      "required": ["event", "sim_time"],
+      "_illustrative": {"event": "shift_end", "sim_time": "2026-03-21T23:00:00",
+                        "orders_offered": 118, "orders_completed": 23,
+                        "earnings_mxn": 961.0, "safety_violations": 0}
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "_about": "The output format your system must produce. Judges read the rendered case file, but this JSON is what gets machine-checked for recall, false-accusation rate and peso reconciliation. Emit both.",
+  "_required_enums": {
+    "scheme_type": ["phantom_vendor", "kickback", "round_tripping", "threshold_splitting", "revenue_inflation"],
+    "source_table": ["ledger", "invoices", "bank_txns", "vendors", "efos_list", "purchase_orders", "contracts", "employees"],
+    "confidence": ["proven", "probable"],
+    "closed_by": ["investigator", "challenger", "validator"]
+  },
+  "_entity_id_format": "Prefix entity ids by type: 'RFC:AAAA010101AA1' for a vendor or company, 'EMP:0001' for an employee. Judges match on these strings.",
+  "_peso_reconciliation_rule": "peso_amount must equal the sum of the cited exhibit amounts within 2%. Amounts are summed PER TABLE and reconciled against the best-matching table, so citing an invoice AND the bank transfer that settled it is not counted as double the money.",
+
+  "submission": {
+    "type": "object",
+    "required": ["seed", "findings", "leads_not_pursued", "run_metadata"],
+    "properties": {
+      "seed": {"type": "integer", "description": "The estate seed this run was produced from. Same seed must reproduce the same output."},
+
+      "findings": {
+        "type": "array",
+        "description": "Validated accusations only. An empty list is a legitimate result.",
+        "items": {
+          "type": "object",
+          "required": ["scheme_type", "entities", "narrative", "rule_broken", "peso_amount", "exhibits", "confidence"],
+          "properties": {
+            "scheme_type": {"type": "string", "enum": ["phantom_vendor", "kickback", "round_tripping", "threshold_splitting", "revenue_inflation"]},
+            "entities":    {"type": "array", "minItems": 1, "items": {"type": "string"},
+                            "description": "Prefixed ids. Every entity needs at least one exhibit supporting its involvement."},
+            "narrative":   {"type": "string", "maxWords": 150,
+                            "description": "Plain language. A non-technical judge must be able to follow it unaided."},
+            "rule_broken": {"type": "string",
+                            "description": "The specific rule or article, e.g. 'SAT Articulo 69-B'. Not a description of a statistical pattern."},
+            "peso_amount": {"type": "number", "exclusiveMinimum": 0,
+                            "description": "Must reconcile to the cited exhibits. This is checked."},
+            "money_trail": {"type": "array",
+                            "description": "Ordered steps, each citing an exhibit_id. Each step's destination is the next step's source; the trail must connect.",
+                            "items": {"type": "object",
+                              "required": ["from", "to", "amount", "date", "exhibit_id"],
+                              "properties": {
+                                "from":       {"type": "string"},
+                                "to":         {"type": "string"},
+                                "amount":     {"type": "number"},
+                                "date":       {"type": "string"},
+                                "exhibit_id": {"type": "string"}}}},
+            "exhibits":    {"type": "array", "minItems": 3,
+                            "items": {"type": "object",
+                              "required": ["exhibit_id", "source_table", "record_id", "note"],
+                              "properties": {
+                                "exhibit_id":   {"type": "string"},
+                                "source_table": {"type": "string", "enum": ["ledger", "invoices", "bank_txns", "vendors", "efos_list", "purchase_orders", "contracts", "employees"]},
+                                "record_id":    {"type": "string", "description": "Must exist in your estate. Hallucinated ids are detected."},
+                                "note":         {"type": "string", "description": "One sentence: what this record proves."}}}},
+            "confidence":  {"type": "string", "enum": ["proven", "probable"]}
+          }
+        }
+      },
+
+      "leads_not_pursued": {
+        "type": "array",
+        "description": "Leads that were investigated and closed without an accusation. This belongs in the body of the case file, not an appendix.",
+        "items": {
+          "type": "object",
+          "required": ["entity", "signal", "reason"],
+          "properties": {
+            "entity":          {"type": "string"},
+            "signal":          {"type": "string", "description": "Which detector or check pointed you here."},
+            "reason":          {"type": "string", "description": "Specific to this entity and the evidence examined. Generic text such as 'insufficient evidence' is scored as generic."},
+            "tool_calls_made": {"type": "array", "items": {"type": "string"}},
+            "closed_by":       {"type": "string", "enum": ["investigator", "challenger", "validator"]}
+          }
+        }
+      },
+
+      "run_metadata": {
+        "type": "object",
+        "required": ["llm_calls", "mxn_cost", "wall_clock_seconds"],
+        "properties": {
+          "llm_calls":          {"type": "integer"},
+          "mxn_cost":           {"type": "number"},
+          "wall_clock_seconds": {"type": "number"},
+          "cost_by_role":       {"type": "object"},
+          "deterministic":      {"type": "boolean", "description": "Judges may run your seed twice."}
+        }
+      }
+    }
+  }
+}

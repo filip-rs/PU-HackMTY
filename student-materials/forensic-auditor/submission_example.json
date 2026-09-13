@@ -1,0 +1,44 @@
+{
+  "_about": "FIELD SHAPE ONLY. The values are placeholders, not a worked solution - the narrative and reasons here are deliberately skeletal. Use it to check your serializer against validate_format.py, not as an example of good investigative content.",
+
+  "seed": 1,
+
+  "findings": [
+    {
+      "scheme_type": "phantom_vendor",
+      "entities": ["RFC:AAAA010101AA1"],
+      "rule_broken": "<the specific rule or article your finding relies on>",
+      "narrative": "<plain-language account of what happened, under 150 words, readable by a non-technical judge>",
+      "peso_amount": 139200.0,
+      "confidence": "proven",
+      "money_trail": [
+        {"from": "<source>", "to": "<destination>", "amount": 92800.0, "date": "2026-03-29", "exhibit_id": "EX-01"},
+        {"from": "<source>", "to": "<destination>", "amount": 46400.0, "date": "2026-03-16", "exhibit_id": "EX-02"}
+      ],
+      "exhibits": [
+        {"exhibit_id": "EX-01", "source_table": "invoices",  "record_id": "INV-00001",     "note": "<what this record proves, one sentence>"},
+        {"exhibit_id": "EX-02", "source_table": "invoices",  "record_id": "INV-00002",     "note": "<what this record proves, one sentence>"},
+        {"exhibit_id": "EX-03", "source_table": "vendors",   "record_id": "AAAA010101AA1", "note": "<what this record proves, one sentence>"},
+        {"exhibit_id": "EX-04", "source_table": "efos_list", "record_id": "AAAA010101AA1", "note": "<what this record proves, one sentence>"}
+      ]
+    }
+  ],
+
+  "leads_not_pursued": [
+    {
+      "entity": "RFC:BBBB020202BB2",
+      "signal": "<which detector or check pointed you here>",
+      "reason": "<specific to this entity and the evidence you examined>",
+      "tool_calls_made": ["<tool name>", "<tool name>"],
+      "closed_by": "investigator"
+    }
+  ],
+
+  "run_metadata": {
+    "llm_calls": 0,
+    "mxn_cost": 0.0,
+    "wall_clock_seconds": 0.0,
+    "cost_by_role": {},
+    "deterministic": true
+  }
+}
