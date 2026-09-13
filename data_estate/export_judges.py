@@ -356,6 +356,11 @@ def _contracts(estate, sup_by_id: dict) -> list[dict]:
     for decoy in estate.truth.get("decoys", []):
         if str(decoy.get("looks_like", "")).startswith("Shares address"):
             wanted[decoy["supplier_id"]] = "Contrato de fletes, carta porte por viaje"
+        # D7: a fixed-fee services decoy (twelve equal monthly invoices just under
+        # the approval limit) whose why_honest says "the contract is on file". Emit
+        # the standing contract so contract_on_file can clear it on a judge estate.
+        elif str(decoy.get("looks_like", "")).startswith("Twelve invoices"):
+            wanted[decoy["supplier_id"]] = "Contrato marco, cuota mensual fija"
 
     rows = []
     for supplier_id, scope in sorted(wanted.items()):

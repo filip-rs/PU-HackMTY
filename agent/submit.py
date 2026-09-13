@@ -577,17 +577,24 @@ def _leads_not_pursued(case: dict, ds: Dataset, log: list[dict], moved: list[dic
     for lead in case.get("not_pursued", []):
         entity = str(lead.get("entity", ""))
         slot = index.get(entity, {})
-        detectors = list(slot.get("detectors", []))
-        if not detectors:
+        # #94: the case file is authoritative for the detectors that raised the lead
+        # (its ``signal``) — fall back to the log/aggregation only when absent.
+        signal_list = lead.get("signal") or slot.get("detectors")
+        if not signal_list:
             if fallback is None:
                 fallback = _dossier_detectors(ds)
-            detectors = fallback.get(entity, [])
+            signal_list = fallback.get(entity, [])
+        # ``tool_calls_made`` = the check names that were actually run (written onto
+        # the not_pursued entry by the loop) plus the LLM tool calls from the log.
+        check_names = list(lead.get("tool_calls_made") or [])
+        log_tools = list(slot.get("tools", []))
+        merged = check_names + [t for t in log_tools if t not in check_names]
         out.append(
             {
                 "entity": entity_id(entity, ds),
-                "signal": ", ".join(detectors) or "aggregated detector sweep",
+                "signal": ", ".join(str(x) for x in signal_list) or "aggregated detector sweep",
                 "reason": str(lead.get("reason", "")) or "no corroborating scheme signature matched",
-                "tool_calls_made": list(slot.get("tools", [])),
+                "tool_calls_made": merged,
                 # #91: the case file is authoritative for who closed the lead (a
                 # challenger-killed finding must not read as closed by the investigator).
                 "closed_by": lead.get("closed_by") or slot.get("closed_by") or "investigator",

@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from .challenge import challenge as _challenge
-from .clear import clear_reason
+from .clear import clear_reason, tool_calls_for
 from .config import MXN_PER_1K_COMPLETION_TOKENS, MXN_PER_1K_PROMPT_TOKENS, settings
 from .contract import SCHEME_TYPES, validate_case_file
 from .data import Dataset, load
@@ -361,20 +361,26 @@ def _build_not_pursued(
         eid = str(d["entity_id"])
         if eid in accused:
             continue
+        # #94: every declined lead records what raised it, what was checked, and
+        # who closed it, so a judge sees the innocence investigation, not just a
+        # canned sentence. ``signal`` is the detector names; ``tool_calls_made``
+        # is the check names run (plus LLM tool calls appended by agent.submit).
+        detectors = sorted({str(x) for x in d.get("detectors", [])})
+        bookkeeping = {"signal": detectors, "tool_calls_made": tool_calls_for(detectors)}
         if eid in challenged:
             # A killed finding's entity is not accused in a surviving finding,
             # so it is a declined lead closed by the challenger (#91). An entity
             # caught by both a killed and a surviving finding stays accused only
             # in the surviving one (the ``accused`` check above already skipped it).
-            out.append({"entity": eid, "reason": challenged[eid], "closed_by": "challenger"})
+            out.append({"entity": eid, "reason": challenged[eid], "closed_by": "challenger", **bookkeeping})
             continue
         if eid in parked:
-            out.append({"entity": eid, "reason": parked[eid], "closed_by": "investigator"})
+            out.append({"entity": eid, "reason": parked[eid], "closed_by": "investigator", **bookkeeping})
             continue
         reason = dropped.get(eid)
         if reason is None:
             reason, _verified, _dets = _drop_reason(d, ds)
-        out.append({"entity": eid, "reason": reason})
+        out.append({"entity": eid, "reason": reason, "closed_by": "investigator", **bookkeeping})
     out.sort(key=lambda x: x["entity"])
     return out
 

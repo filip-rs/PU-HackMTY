@@ -11,7 +11,16 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from agent.clear import clear_reason
+import pytest
+
+from agent.clear import (
+    cancelled_reversed,
+    clear_reason,
+    contract_on_file,
+    po_trail,
+    same_bank_only,
+    tool_calls_for,
+)
 
 
 # --- per-detector checks on company_42 ---------------------------------------
@@ -122,3 +131,116 @@ def test_every_not_pursued_reason_is_grounded_or_unverified(dataset_dir, ds):
 
 def test_unknown_detector_is_none(ds):
     assert clear_reason("detect_does_not_exist", "S00009", [], ds) is None
+
+
+# --- judge-estate checks (#94) -------------------------------------------------
+# On a judges' estate the documents that clear a lead are purchase orders, a
+# standing contract and the bank code, not a goods receipt and a home address.
+
+# judges_mini: a fixed-fee maintenance vendor (B) is cleared by both a PO and a
+# contract; the consulting vendor (A) has neither and is not cleared.
+def test_judges_mini_vendor_b_cleared_by_po_trail(judges_mini_dir):
+    from agent.data import load
+
+    m = load(judges_mini_dir)
+    v, reason, records = po_trail("RFC:BBBB020202BB2", m)
+    assert v is True
+    assert "PO-0001" in reason
+    assert "PO-0001" in records
+    assert "Ana Ruiz Medina" in reason
+
+
+def test_judges_mini_vendor_b_cleared_by_contract_on_file(judges_mini_dir):
+    from agent.data import load
+
+    m = load(judges_mini_dir)
+    v, reason, records = contract_on_file("RFC:BBBB020202BB2", m)
+    assert v is True
+    assert "CTR-0001" in reason
+    assert "CTR-0001" in records
+    assert "46,400.00" in reason
+
+
+def test_judges_mini_vendor_a_not_cleared(judges_mini_dir):
+    from agent.data import load
+
+    m = load(judges_mini_dir)
+    assert po_trail("RFC:AAAA010101AA1", m)[0] is False
+    assert contract_on_file("RFC:AAAA010101AA1", m)[0] is False
+
+
+# seed 7 D6/D7 decoys (#81): D6 shares a bank code but no transfer passes; D7 is a
+# fixed-fee services decoy under a framework contract.
+@pytest.fixture(scope="module")
+def seed7_judges(tmp_path_factory):
+    """Seed 7 exported to the judges' schema, loaded as a Dataset."""
+    from agent.data import load
+    from data_estate.export_judges import write_judges_estate
+    from data_estate.generate import COMPANY, Generator
+
+    out = tmp_path_factory.mktemp("estate7") / "estate_7"
+    estate = Generator(7).build(["threshold", "revenue"])
+    write_judges_estate(estate, out, seed=7, company=COMPANY)
+    return load(out / "csv")
+
+
+def test_seed7_d6_cleared_by_same_bank_only(seed7_judges):
+    v, reason, records = same_bank_only("RFC:OTH9706272RX", seed7_judges)
+    assert v is True
+    assert "002" in reason  # bank code shared with the buyer
+    assert "EMP:00002" in reason  # the Gerente de Compras
+    assert "no transfer" in reason
+
+
+def test_seed7_d7_cleared_by_contract_on_file(seed7_judges):
+    v, reason, records = contract_on_file("RFC:EQF220218ZO1", seed7_judges)
+    assert v is True
+    assert "CTR-S00013" in reason
+    assert "CTR-S00013" in records
+    assert "261,000.00" in reason  # value/12 == the 12 equal invoices
+
+
+def test_seed7_threshold_lead_cleared_by_contract(seed7_judges):
+    # The planted threshold-splitting supplier is not under a contract, so it
+    # must NOT be cleared; the fixed-fee decoy is.
+    from agent.detectors import run_all
+
+    leads = run_all(seed7_judges)["detect_threshold_splitting"]
+    planted = {str(r["entity_id"]) for r in leads}
+    assert "RFC:EQF220218ZO1" not in planted, "the fixed-fee decoy does not cluster"
+    assert planted, "expected the planted threshold-splitting supplier to be a lead"
+
+
+def test_seed7_revenue_inflation_not_cleared_by_cancelled_reversed(seed7_judges):
+    # The planted revenue-inflation customer has cancellations never reversed, so
+    # `cancelled_reversed` must NOT clear it (that would hide a real finding).
+    v, reason, _recs = cancelled_reversed("RFC:ODL88020677Z", seed7_judges)
+    assert v is False
+    assert reason == ""
+
+
+def test_no_receipt_lead_cleared_by_po_trail_on_seed7(seed7_judges):
+    # The freight decoy shares an address and never closes a goods receipt, but a
+    # PO trail explains its invoices: cleared (grounded), not "unverified".
+    r = clear_reason("detect_no_receipt", "RFC:TQC150925LNX", [], seed7_judges)
+    assert r is not None
+
+
+def test_every_not_pursued_entry_has_bookkeeping(dataset_dir, ds):
+    from agent.investigate import run
+
+    case = run(str(dataset_dir), out=None, log=None, no_llm=True)
+    for e in case["not_pursued"]:
+        assert e.get("signal"), f"{e['entity']}: signal must be non-empty"
+        assert e.get("tool_calls_made"), f"{e['entity']}: tool_calls_made must be non-empty"
+        assert e.get("closed_by") in ("investigator", "challenger", "validator")
+
+
+def test_tool_calls_for_maps_detectors_to_checks():
+    assert tool_calls_for(["detect_no_receipt"]) == ["po_trail"]
+    assert tool_calls_for(["detect_threshold_splitting"]) == ["contract_on_file"]
+    assert tool_calls_for(["detect_kickback_outflow"]) == ["same_bank_only"]
+    assert tool_calls_for(["detect_revenue_inflation"]) == ["cancelled_reversed"]
+    assert tool_calls_for(["detect_efos"]) == ["presunto_only"]
+    # deduped and ordered
+    assert tool_calls_for(["detect_no_receipt", "detect_fast_pay_no_deliverable"]) == ["po_trail"]
