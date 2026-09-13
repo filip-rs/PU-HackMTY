@@ -67,6 +67,7 @@ def test_fakellm_drives_one_lead(tmp_path, dataset_dir):
         "tool_result",
         "decision",
         "guard",
+        "challenge",
         "run_end",
     ]
     assert len(case["findings"]) == 1
@@ -287,7 +288,7 @@ def test_guard_rejection_is_fed_back_and_retry_succeeds(tmp_path, dataset_dir):
 
     entries = _read_log(log)
     assert [e["kind"] for e in entries] == [
-        "run_start", "lead", "hypothesis", "decision", "guard", "decision", "guard", "run_end",
+        "run_start", "lead", "hypothesis", "decision", "guard", "decision", "guard", "challenge", "run_end",
     ]
     guards = [e for e in entries if e["kind"] == "guard"]
     assert guards[0]["payload"]["accepted"] is False
@@ -793,7 +794,7 @@ def test_workers_one_is_byte_identical_to_previous_behaviour(tmp_path, dataset_d
     ]
     case = run(str(dataset_dir), out=str(out), log=str(log), max_leads=1, workers=1, llm=FakeLLM(replies))
     assert [e["kind"] for e in _read_log(log)] == [
-        "run_start", "lead", "hypothesis", "tool_call", "tool_result", "decision", "guard", "run_end",
+        "run_start", "lead", "hypothesis", "tool_call", "tool_result", "decision", "guard", "challenge", "run_end",
     ]
     assert len(case["findings"]) == 1
     assert case["findings"][0]["scheme_type"] == "kickback_shell"

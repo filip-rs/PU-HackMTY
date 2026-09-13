@@ -50,6 +50,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .challenge import challenge as _challenge
 from .clear import clear_reason
 from .config import MXN_PER_1K_COMPLETION_TOKENS, MXN_PER_1K_PROMPT_TOKENS, settings
 from .contract import SCHEME_TYPES, validate_case_file
@@ -337,16 +338,20 @@ def _build_not_pursued(
     findings: list[dict],
     dropped: dict[str, str],
     parked: dict[str, str] | None = None,
+    challenged: dict[str, str] | None = None,
 ) -> list[dict]:
     """Why the remaining leads were not pursued, in the case-file contract.
 
     ``parked`` (#70) comes first — an ``other`` finding the guard accepted is
     recorded as a "suspicious, unproven" entry, never an accusation. Then
-    ``dropped`` (the per-unit reason the loop already decided), then the
-    per-dossier grounded ``_drop_reason``. Every parked entry carries
-    ``closed_by`` so #88/#94 can export it exactly as the judges' schema wants.
+    ``challenged`` (#91) — a finding the adversarial review killed, closed by the
+    challenger with the argument that destroyed it. Then ``dropped`` (the
+    per-unit reason the loop already decided), then the per-dossier grounded
+    ``_drop_reason``. Every parked/challenged entry carries ``closed_by`` so
+    #88/#94 can export it exactly as the judges' schema wants.
     """
     parked = parked or {}
+    challenged = challenged or {}
     accused: set[str] = set()
     for f in findings:
         accused.update(f.get("accused", []))
@@ -354,6 +359,13 @@ def _build_not_pursued(
     for d in dossiers:
         eid = str(d["entity_id"])
         if eid in accused:
+            continue
+        if eid in challenged:
+            # A killed finding's entity is not accused in a surviving finding,
+            # so it is a declined lead closed by the challenger (#91). An entity
+            # caught by both a killed and a surviving finding stays accused only
+            # in the surviving one (the ``accused`` check above already skipped it).
+            out.append({"entity": eid, "reason": challenged[eid], "closed_by": "challenger"})
             continue
         if eid in parked:
             out.append({"entity": eid, "reason": parked[eid], "closed_by": "investigator"})
@@ -602,6 +614,56 @@ def _park_finding(clean: dict, rec, parked: dict[str, str]) -> None:
     for a in clean["accused"]:
         rec.emit("decision", a, {"action": "park_lead", "tier": "suspicious", "entity_id": a, "reason": reason})
         parked[str(a)] = reason
+
+
+def _challenge_findings(
+    findings: list[dict], ds: Dataset, rec: _Log | None
+) -> tuple[list[dict], dict[str, str]]:
+    """Run the adversarial review (#91) on every accepted finding.
+
+    For each finding, ``:func:`agent.challenge.challenge``` returns the
+    arguments a defender would raise plus a verdict. The finding keeps its
+    challenge result (``challenge`` and the possibly-downgraded ``confidence``).
+    A ``killed`` finding leaves the findings list and becomes a declined lead
+    closed by the challenger, with the argument that destroyed it as the reason.
+    A ``weakened`` finding stays but its confidence is downgraded to ``probable``.
+    A ``challenge`` step-log entry is emitted per finding (run-level, so the
+    per-entity adjacency in :func:`agent.steplog.validate_entries` is unaffected).
+    Deterministic, pure pandas; ``rec`` may be ``None`` (replay never writes a log).
+    """
+    kept: list[dict] = []
+    challenged: dict[str, str] = {}
+    for f in findings:
+        result = _challenge(f, ds)
+        f["challenge"] = {
+            "arguments": result["arguments"],
+            "verdict": result["verdict"],
+            "confidence": result["confidence"],
+        }
+        if result["confidence"] == "probable" and f.get("confidence") != "probable":
+            f["confidence"] = "probable"
+        if rec is not None:
+            rec.emit(
+                "challenge",
+                "",
+                {
+                    "scheme_type": str(f.get("scheme_type", "")),
+                    "verdict": result["verdict"],
+                    "confidence": result["confidence"],
+                    "arguments": result["arguments"],
+                },
+            )
+        if result["verdict"] == "killed":
+            kill_claims = [a["claim"] for a in result["arguments"] if a["outcome"] == "killed"]
+            kill_records = [str(r) for a in result["arguments"] for r in a.get("records", [])]
+            reason = "challenged and killed: " + "; ".join(kill_claims)
+            if kill_records:
+                reason += " [" + ", ".join(kill_records[:5]) + "]"
+            for a in f.get("accused", []):
+                challenged[str(a)] = reason
+        else:
+            kept.append(f)
+    return kept, challenged
 
 
 def _llm_loop(
@@ -1022,7 +1084,10 @@ def run(
             findings, dropped, parked = _fallback_loop(ds, units, rec, max_leads)
 
         findings.sort(key=lambda f: (f["scheme_type"], f["accused"]))
-        not_pursued = _build_not_pursued(dossiers, ds, findings, dropped, parked)
+        # #91: attack every finding before it is printed. A killed finding leaves
+        # the list and becomes a declined lead closed by the challenger.
+        findings, challenged = _challenge_findings(findings, ds, rec)
+        not_pursued = _build_not_pursued(dossiers, ds, findings, dropped, parked, challenged)
         case: dict = {"findings": findings, "not_pursued": not_pursued}
 
         errors = validate_case_file(case, ds)
@@ -1184,7 +1249,11 @@ def replay(
             parked[pid] = str(payload.get("reason") or "suspicious, unproven")
 
     dossiers = aggregate(ds, run_all(ds))
-    not_pursued = _build_not_pursued(dossiers, ds, findings, dropped, parked)
+    # #91: apply the same adversarial review the run did, so a replayed case file
+    # cannot resurrect a finding the challenger killed on the way out. Deterministic,
+    # so run/replay agree; the original challenge results are recomputed and attached.
+    findings, challenged = _challenge_findings(findings, ds, None)
+    not_pursued = _build_not_pursued(dossiers, ds, findings, dropped, parked, challenged)
     case: dict = {"findings": findings, "not_pursued": not_pursued}
 
     errors = validate_case_file(case, ds)

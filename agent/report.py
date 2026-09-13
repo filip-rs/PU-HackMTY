@@ -796,11 +796,26 @@ def _internal_id(prefixed: str, ds: Dataset) -> str:
     return prefixed
 
 
-def _challenge_text(finding: dict, challenges: dict[str, str]) -> str:
-    """What an adversarial review argued, or an honest note that none ran (#91)."""
+def _challenge_text(finding: dict, challenges: dict[str, str] | None = None) -> str:
+    """What an adversarial review argued, and why the finding held (#91)."""
+    challenges = challenges or {}
+    ch = finding.get("challenge") or {}
+    if isinstance(ch, dict) and ch.get("arguments"):
+        fought = "; ".join(
+            f"{a.get('outcome', '')} — {a.get('claim', '')}"
+            + (f" [{' '.join(a.get('records', [])[:4])}]" if a.get("records") else "")
+            for a in ch["arguments"]
+        )
+        if ch.get("verdict") == "survived":
+            verdict = "The finding survived the adversarial review."
+        elif ch.get("verdict") == "killed":
+            verdict = "The finding was killed by the adversarial review and is reported as a declined lead."
+        else:
+            verdict = f"The adversarial review returned '{ch.get('verdict')}'."
+        return f"{verdict} Each argument was tested against the records: {fought}."
     key = ",".join(finding.get("entities", []))
     if key in challenges:
-        return challenges[key]
+        return str(challenges[key])
     return (
         "No adversarial review ran against this finding in this build, so it stands on the guard's "
         "checks alone: the rule, the records and the arithmetic above. A finding nobody has tried to "
