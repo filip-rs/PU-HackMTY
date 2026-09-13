@@ -82,6 +82,8 @@ _DATA_TOOL_NAMES = {
     "check_69b",
     "trace_flow",
     "query_ledger",
+    "get_purchase_orders",
+    "get_contracts",
 }
 
 # Guard-rejection retry budget (#66): the LLM may attempt ``record_finding``

@@ -63,6 +63,36 @@ def _num(value, default=0.0) -> float:
         return default
 
 
+def _strip_entity_prefix(value) -> str:
+    """Strip a judges' id prefix so ``RFC:BBBB020202BB2`` and ``BBBB020202BB2``
+    compare equal, and an ``EMP:`` id matches its bare form. Legacy ids (``S*``,
+    ``C*``, ``E*``) pass through unchanged."""
+    v = str(value)
+    for prefix in ("RFC:", "EMP:"):
+        if v.startswith(prefix):
+            return v[len(prefix):]
+    return v
+
+
+def _id_match(stored, query) -> bool:
+    """A stored entity id equals the query, allowing for an RFC:/EMP: prefix on
+    either side (a judge passes ``RFC:...``, a legacy dataset ``S*``/``E*``)."""
+    return str(stored) == str(query) or _strip_entity_prefix(stored) == _strip_entity_prefix(query)
+
+
+def _bank_code(clabe) -> str:
+    """The first three digits of a CLABE — the bank/branch institution code used
+    for the same-bank-institution decoy (same bank, different account)."""
+    c = str(clabe)
+    return c[:3] if len(c) >= 3 else c
+
+
+def _record_source(ds, record_id: str, fallback: str) -> str:
+    """The judges' table a record id lives in, from ``ds.record_table`` (#79)."""
+    return ds.record_table.get(record_id, fallback)
+
+
+
 class Tools:
     """Deterministic predicates over the dataset. The LLM proposes, these prove."""
 
@@ -86,6 +116,23 @@ class Tools:
         if len(ds.goods_receipts):
             for r in ds.goods_receipts.itertuples(index=False):
                 self._receipts_by_uuid.setdefault(r.invoice_uuid, []).append(r)
+        # Vendor RFC -> contract id (#85): a contract covering a vendor means an
+        # invoice is not a phantom purchase.
+        self._contract_by_rfc: dict[str, str] = {}
+        if len(ds.contracts):
+            for c in ds.contracts.itertuples(index=False):
+                rfc = str(c.vendor_rfc)
+                if rfc:
+                    self._contract_by_rfc.setdefault(rfc, str(c.contract_id))
+        # Inbound payments keyed by invoice uuid (collected / days_to_collect).
+        self._in_by_invoice: dict[str, list] = {}
+        if len(ds.bank_transactions):
+            inn = ds.bank_transactions[
+                (ds.bank_transactions["direction"] == "in")
+                & (ds.bank_transactions["invoice_uuid"] != "")
+            ]
+            for t in inn.itertuples(index=False):
+                self._in_by_invoice.setdefault(t.invoice_uuid, []).append(t)
 
     # ---- lookups ---------------------------------------------------------
 
@@ -93,7 +140,11 @@ class Tools:
         """The master supplier row plus EFOS status, invoice stats and employee links."""
         if not len(self.ds.suppliers):
             return {"error": f"{supplier_id} not found"}
-        sup = self.ds.suppliers[self.ds.suppliers["supplier_id"] == supplier_id]
+        sup = self.ds.suppliers[
+            self.ds.suppliers["supplier_id"].map(lambda x: _id_match(x, supplier_id))
+        ]
+        if not len(sup):
+            sup = self.ds.suppliers[self.ds.suppliers["rfc"].astype(str) == str(supplier_id)]
         if not len(sup):
             return {"error": f"{supplier_id} not found"}
         s = next(iter(sup.itertuples(index=False)))
@@ -130,6 +181,29 @@ class Tools:
                 days.append(max(0, (first - inv_row.fecha).days))
         median_days_to_pay = statistics.median(days) if days else None
 
+        # Deliverable trail (#85): does the vendor actually deliver? POs and a
+        # contract are the judges' version of "goods on the books".
+        n_with_po = int((sub["po_number"].astype(str) != "").sum()) if n_invoices else 0
+        supplier_rfc = str(s.rfc)
+        n_contracts = int(supplier_rfc in self._contract_by_rfc)
+
+        # Approvers: who signed off each invoice (the judge asks who approved).
+        approvers: list[dict] = []
+        if n_invoices:
+            grouped: dict[str, int] = {}
+            for emp in sub["approved_by"]:
+                key = str(emp)
+                if key:
+                    grouped[key] = grouped.get(key, 0) + 1
+            role_by_id: dict[str, str] = {}
+            if len(self.ds.employees):
+                for e in self.ds.employees.itertuples(index=False):
+                    role_by_id[str(e.employee_id)] = str(e.role)
+            approvers = [
+                {"employee_id": emp_id, "role": role_by_id.get(emp_id, ""), "n_invoices": cnt}
+                for emp_id, cnt in sorted(grouped.items())
+            ]
+
         # Employee links: same home address, same CLABE, or the approver.
         links: list[dict] = []
         if len(self.ds.employees):
@@ -141,6 +215,10 @@ class Tools:
                 if str(e.personal_clabe) == str(s.clabe):
                     links.append({"employee_id": emp_id, "kind": "clabe",
                                   "detail": "personal CLABE == supplier account"})
+                if (_bank_code(e.personal_clabe) == _bank_code(s.clabe)
+                        and str(e.personal_clabe) != str(s.clabe)):
+                    links.append({"employee_id": emp_id, "kind": "same_bank",
+                                  "detail": "same bank institution, different account"})
                 if str(e.employee_id) == str(s.approved_by):
                     links.append({"employee_id": emp_id, "kind": "approver",
                                   "detail": f"approved onboarding ({e.role})"})
@@ -166,6 +244,13 @@ class Tools:
                 "n_with_receipt": n_with_receipt,
                 "median_days_to_pay": median_days_to_pay,
             },
+            "deliverable_trail": {
+                "n_invoices": n_invoices,
+                "n_with_po": n_with_po,
+                "n_with_receipt": n_with_receipt,
+                "n_contracts": n_contracts,
+            },
+            "approvers": approvers,
             "employee_links": links,
         }
 
@@ -173,7 +258,9 @@ class Tools:
         """The master customer row plus sales-invoice stats."""
         if not len(self.ds.customers):
             return {"error": f"{customer_id} not found"}
-        cus = self.ds.customers[self.ds.customers["customer_id"] == customer_id]
+        cus = self.ds.customers[
+            self.ds.customers["customer_id"].map(lambda x: _id_match(x, customer_id))
+        ]
         if not len(cus):
             return {"error": f"{customer_id} not found"}
         c = next(iter(cus.itertuples(index=False)))
@@ -201,10 +288,20 @@ class Tools:
         """The master employee row plus any suppliers they are linked to."""
         if not len(self.ds.employees):
             return {"error": f"{employee_id} not found"}
-        rows = self.ds.employees[self.ds.employees["employee_id"] == employee_id]
+        rows = self.ds.employees[
+            self.ds.employees["employee_id"].map(lambda x: _id_match(x, employee_id))
+        ]
         if not len(rows):
             return {"error": f"{employee_id} not found"}
         e = next(iter(rows.itertuples(index=False)))
+        # Money from vendors landing on this employee's account (the kickback
+        # tell); and the bank institution code, so the model can see same-bank.
+        n_from_vendors = 0
+        if len(self.ds.counterparty_bank):
+            n_from_vendors = int(
+                (self.ds.counterparty_bank["counterparty_clabe"].astype(str)
+                 == str(e.personal_clabe)).sum()
+            )
         supplier_links: list[str] = []
         if len(self.ds.suppliers):
             sup = self.ds.suppliers
@@ -223,6 +320,8 @@ class Tools:
             "home_street": str(e.home_street),
             "home_city": str(e.home_city),
             "personal_clabe": str(e.personal_clabe),
+            "bank_code": _bank_code(e.personal_clabe),
+            "n_transfers_received_from_vendors": n_from_vendors,
             "linked_suppliers": supplier_links,
         }
 
@@ -232,7 +331,9 @@ class Tools:
         """Invoices for a counterparty, with receipt/payment facts attached."""
         if not len(self.ds.invoices):
             return []
-        sub = self.ds.invoices[self.ds.invoices["counterparty_id"] == counterparty_id]
+        sub = self.ds.invoices[self.ds.invoices["counterparty_id"].map(
+            lambda x: _id_match(x, counterparty_id)
+        )]
         sub = sub.sort_values(["fecha", "uuid"]).head(limit)
         drop = {"nombre_emisor", "nombre_receptor", "moneda", "serie"}
         rows: list[dict] = []
@@ -260,6 +361,20 @@ class Tools:
             row["receipt_ids"] = receipt_ids
             row["paid_by"] = paid_by
             row["days_to_pay"] = days_to_pay
+            # Judge-estate extras (#85): status, the PO it settles, the contract
+            # covering the vendor, and whether a sale was ever collected.
+            row["status"] = str(getattr(r, "status", ""))
+            row["po_id"] = str(getattr(r, "po_number", ""))
+            row["contract_id"] = (
+                self._contract_by_rfc.get(str(getattr(r, "rfc_emisor", "")), "")
+                if str(getattr(r, "tipo", "")) == "recibida"
+                else ""
+            )
+            inn = self._in_by_invoice.get(uuid, [])
+            row["collected"] = bool(inn)
+            row["days_to_collect"] = (
+                max(0, (min(t.fecha for t in inn) - r.fecha).days) if inn else None
+            )
             rows.append(row)
         return rows
 
@@ -398,35 +513,69 @@ class Tools:
         """Follow money leaving a CLABE through its counterparty's statement.
 
         Hops start at ``counterparty_bank`` rows with ``entity_clabe == clabe``
-        and ``direction == 'out'`` (money leaving that entity), then follow the
-        destination ``counterparty_clabe`` up to ``depth``. Each hop reports
-        whether the money returns to the company: true when a later
-        ``bank_transactions`` ``in`` row from that destination CLABE (the one the
-        money was forwarded to) exists within ``days`` at >= ``min_ratio`` of the
-        forwarded amount.
+        and ``direction == 'out'`` (money leaving that entity) **and** at the
+        company's own ``bank_transactions`` ``out`` rows whose ``account_clabe``
+        is this CLABE, then follow the destination ``counterparty_clabe`` up to
+        ``depth``. Each hop reports whether the money returns to the company
+        (true when a later ``bank_transactions`` ``in`` row from that destination
+        CLABE exists within ``days`` at >= ``min_ratio`` of the forwarded amount)
+        and, on a judges' estate, the ``source_table`` the record id lives in.
         """
-        if not len(self.ds.counterparty_bank):
-            return []
         cb = self.ds.counterparty_bank
         bank = self.ds.bank_transactions
+        if not len(cb) and not len(bank):
+            return []
 
-        def _out_rows(entity_clabe: str):
-            return cb[
-                (cb["entity_clabe"].astype(str) == str(entity_clabe))
-                & (cb["direction"].astype(str) == "out")
-            ].sort_values(["fecha", "record_id"])
+        def _out_rows(from_clabe):
+            rows: list[dict] = []
+            if len(cb):
+                sel = cb[
+                    (cb["entity_clabe"].astype(str) == str(from_clabe))
+                    & (cb["direction"].astype(str) == "out")
+                ].sort_values(["fecha", "record_id"])
+                for r in sel.itertuples(index=False):
+                    rid = str(r.record_id)
+                    rows.append({
+                        "record_id": rid,
+                        "source_table": _record_source(self.ds, rid, "counterparty_bank"),
+                        "fecha": r.fecha,
+                        "to_clabe": str(r.counterparty_clabe),
+                        "amount": float(r.amount),
+                        "counterparty_name": str(r.counterparty_name),
+                    })
+            if len(bank):
+                sel = bank[
+                    (bank["account_clabe"].astype(str) == str(from_clabe))
+                    & (bank["direction"].astype(str) == "out")
+                ].sort_values(["fecha", "txn_id"])
+                for r in sel.itertuples(index=False):
+                    rid = str(r.txn_id)
+                    rows.append({
+                        "record_id": rid,
+                        "source_table": _record_source(self.ds, rid, "bank_txns"),
+                        "fecha": r.fecha,
+                        "to_clabe": str(r.counterparty_clabe),
+                        "amount": float(r.amount),
+                        "counterparty_name": str(r.counterparty_name),
+                    })
+            # A leg never appears in both tables; keep the first, sort by date.
+            uniq: dict[str, dict] = {}
+            for row in rows:
+                uniq.setdefault(row["record_id"], row)
+            return [uniq[k] for k in sorted(uniq, key=lambda k: (uniq[k]["fecha"], k))]
 
         hops: list[dict] = []
         seen_records: set[str] = set()
 
         def _walk(from_clabe, hop_num):
-            for r in _out_rows(from_clabe).itertuples(index=False):
-                rec_id = str(r.record_id)
+            for r in _out_rows(from_clabe):
+                rec_id = r["record_id"]
                 if rec_id in seen_records:
                     continue
                 seen_records.add(rec_id)
-                to_clabe = str(r.counterparty_clabe)
-                amt = float(r.amount)
+                to_clabe = r["to_clabe"]
+                amt = r["amount"]
+                fecha = r["fecha"]
 
                 # returns_to_company: later company bank deposit from to_clabe.
                 returns = False
@@ -434,8 +583,8 @@ class Tools:
                     later = bank[
                         (bank["direction"].astype(str) == "in")
                         & (bank["counterparty_clabe"].astype(str) == to_clabe)
-                        & (bank["fecha"] >= r.fecha)
-                        & (bank["fecha"] <= r.fecha + timedelta(days=days))
+                        & (bank["fecha"] >= fecha)
+                        & (bank["fecha"] <= fecha + timedelta(days=days))
                     ]
                     returns = bool(
                         len(later) and max(float(t.amount) for t in later.itertuples(index=False))
@@ -445,11 +594,12 @@ class Tools:
                 hops.append({
                     "hop": hop_num,
                     "record_id": rec_id,
-                    "fecha": _iso(r.fecha),
-                    "from_clabe": str(r.entity_clabe),
+                    "source_table": r["source_table"],
+                    "fecha": _iso(fecha),
+                    "from_clabe": str(from_clabe),
                     "to_clabe": to_clabe,
                     "amount": round(amt, 2),
-                    "counterparty_name": str(r.counterparty_name),
+                    "counterparty_name": r["counterparty_name"],
                     "returns_to_company": returns,
                 })
                 if hop_num < depth and to_clabe:
@@ -458,6 +608,79 @@ class Tools:
         _walk(clabe, 1)
         hops.sort(key=lambda h: (h["hop"], h["fecha"], h["record_id"]))
         return hops
+
+    def get_purchase_orders(self, *, vendor_id: str = "", invoice_uuid: str = "",
+                            limit: int = 50) -> list[dict]:
+        """Purchase orders for a vendor or for the PO an invoice settles.
+
+        On a judges' estate the ``purchase_orders`` table is the deliverable trail
+        (a PO is the only proof the goods were ordered). On a legacy dataset the
+        table does not exist, so this returns a single ``note`` row.
+        """
+        pos = self.ds.purchase_orders
+        if not len(pos):
+            if self.ds.source_format == "legacy":
+                return [{"note": "no purchase_orders table in this estate"}]
+            return []
+        out = pos
+        if vendor_id:
+            q = str(vendor_id)
+            out = out[out["vendor_rfc"].astype(str).map(
+                lambda r: _id_match(r, q) or r == _strip_entity_prefix(q)
+            )]
+        if invoice_uuid:
+            po_ids: set[str] = set()
+            inv = self.ds.invoices[self.ds.invoices["uuid"].astype(str) == str(invoice_uuid)]
+            if len(inv):
+                pn = str(inv.iloc[0].get("po_number", ""))
+                if pn:
+                    po_ids.add(pn)
+            out = out[out["po_id"].astype(str).isin(po_ids)]
+        out = out.sort_values("po_id").head(limit)
+        rows: list[dict] = []
+        for r in out.itertuples(index=False):
+            rfc = str(r.vendor_rfc)
+            rows.append({
+                "po_id": str(r.po_id),
+                "vendor_id": ("RFC:" + rfc) if rfc else "",
+                "vendor_rfc": rfc,
+                "date": _iso(r.date),
+                "amount": float(r.amount),
+                "requester": str(r.requester),
+                "approver": str(r.approver),
+                "description": str(r.description),
+            })
+        return rows
+
+    def get_contracts(self, vendor_id: str) -> list[dict]:
+        """Contracts covering a vendor.
+
+        A contract is the judges' proof that a supplier relationship was long-
+        term and legitimate, so the model can see (and dismiss) the same-bank
+        decoy. On a legacy dataset the table does not exist.
+        """
+        cnts = self.ds.contracts
+        if not len(cnts):
+            if self.ds.source_format == "legacy":
+                return [{"note": "no contracts table in this estate"}]
+            return []
+        q = str(vendor_id)
+        out = cnts[cnts["vendor_rfc"].astype(str).map(
+            lambda r: _id_match(r, q) or r == _strip_entity_prefix(q)
+        )]
+        out = out.sort_values("contract_id")
+        rows: list[dict] = []
+        for r in out.itertuples(index=False):
+            rfc = str(r.vendor_rfc)
+            rows.append({
+                "contract_id": str(r.contract_id),
+                "vendor_id": ("RFC:" + rfc) if rfc else "",
+                "vendor_rfc": rfc,
+                "start_date": _iso(r.start_date),
+                "value": float(r.value),
+                "scope_text": str(r.scope_text),
+            })
+        return rows
 
 
 # ---- OpenAI function-calling schemas ------------------------------------
@@ -477,11 +700,13 @@ _TOOLS = [
     _schema(
         "get_supplier",
         "Get one supplier's master row, its SAT 69-B status, invoice stats "
-        "(count, total MXN, first/last invoice, how many invoices have a goods "
-        "receipt, median days-to-pay) and any links to employees (same home "
-        "address, same CLABE, or the person who approved onboarding). Every "
-        "figure is traceable to record IDs. IDs are supplier_id (e.g. 'S00004').",
-        {"supplier_id": {"type": "string", "description": "The supplier_id to look up."}},
+        "(count, total MXN, first/last invoice, median days-to-pay, "
+        "deliverable_trail: invoices with a PO/receipt/contract), the approvers "
+        "who signed off its invoices, and any links to employees (same home "
+        "address, same CLABE, same bank institution, or who approved onboarding). "
+        "Every figure is traceable to record IDs. Accepts supplier_id (e.g. "
+        "'S00004'), a judges' id (e.g. 'RFC:BBBB020202BB2'), or a bare RFC.",
+        {"supplier_id": {"type": "string", "description": "The supplier_id or RFC to look up."}},
         ["supplier_id"],
     ),
     _schema(
@@ -492,18 +717,24 @@ _TOOLS = [
     ),
     _schema(
         "get_employee",
-        "Get one employee's master row and any suppliers they are linked to "
-        "(via approval, matching home address, or matching CLABE).",
+        "Get one employee's master row (including bank_code and how many "
+        "transfers from vendors land on their account) and any suppliers they "
+        "are linked to (via approval, matching home address, matching CLABE, or "
+        "same bank). Accepts employee_id (e.g. 'E00002') or a judges' id "
+        "(e.g. 'EMP:0001').",
         {"employee_id": {"type": "string", "description": "The employee_id to look up."}},
         ["employee_id"],
     ),
     _schema(
         "get_invoices",
         "List the invoices for a counterparty (supplier or customer), each with "
-        "whether it has a goods receipt, the receipt IDs, the bank txns that paid "
-        "it, and days-to-pay. Capped and sorted.",
+        "status, the PO it settles (po_id), the contract covering the vendor "
+        "(contract_id), whether it has a goods receipt, the receipt IDs, the bank "
+        "txns that paid it, days-to-pay, and for sales whether it was collected "
+        "(collected) and days-to-collect. Capped and sorted. Accepts supplier_id / "
+        "customer_id (e.g. 'S00004') or a judges' id (e.g. 'RFC:BBBB020202BB2').",
         {
-            "counterparty_id": {"type": "string", "description": "supplier_id or customer_id."},
+            "counterparty_id": {"type": "string", "description": "supplier_id, customer_id or RFC id."},
             "limit": {"type": "integer", "description": "Max rows (default 50)."},
         },
         ["counterparty_id"],
@@ -539,9 +770,9 @@ _TOOLS = [
     _schema(
         "trace_flow",
         "Follow money leaving a CLABE through its counterparty bank statement, "
-        "hop by hop. Each hop has record_id, fecha, from/to CLABE, amount and "
-        "'returns_to_company' (true when the company later receives >= min_ratio "
-        "of the amount back from that CLABE within days).",
+        "hop by hop. Each hop has record_id, source_table, fecha, from/to CLABE, "
+        "amount and 'returns_to_company' (true when the company later receives "
+        ">= min_ratio of the amount back from that CLABE within days).",
         {
             "clabe": {"type": "string", "description": "The starting CLABE."},
             "days": {"type": "integer", "description": "Lookback window (default 10)."},
@@ -562,6 +793,28 @@ _TOOLS = [
             "limit": {"type": "integer", "description": "Max rows (default 100)."},
         },
         [],
+    ),
+    _schema(
+        "get_purchase_orders",
+        "Purchase orders for a vendor, or for the PO an invoice settles. A PO is "
+        "the deliverable trail on a judges' estate. Takes vendor_id (supplier_id, "
+        "'RFC:...' or a bare RFC) and/or invoice_uuid. On a legacy dataset returns "
+        "a note that the table does not exist.",
+        {
+            "vendor_id": {"type": "string", "description": "The vendor id / RFC."},
+            "invoice_uuid": {"type": "string", "description": "An invoice UUID to find the PO it settles."},
+            "limit": {"type": "integer", "description": "Max rows (default 50)."},
+        },
+        [],
+    ),
+    _schema(
+        "get_contracts",
+        "Contracts covering a vendor. A contract is proof of a long-term, "
+        "legitimate supplier relationship. Takes vendor_id (supplier_id, "
+        "'RFC:...' or a bare RFC). On a legacy dataset returns a note that the "
+        "table does not exist.",
+        {"vendor_id": {"type": "string", "description": "The vendor id / RFC."}},
+        ["vendor_id"],
     ),
 ]
 
