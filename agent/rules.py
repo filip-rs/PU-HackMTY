@@ -125,6 +125,76 @@ def _amount_r5(finding: dict, ds: Dataset) -> float:
     return 0.0
 
 
+# --- exhibit policies -------------------------------------------------------
+# Which records a finding must cite for its amount to reconcile against the rule's
+# counted table. The guard auto-completes a finding's evidence from these, so a model
+# that cites two of five invoices but claims the full scheme total still produces a
+# submission the judges' validator accepts, instead of being rejected for arithmetic
+# it got right.
+
+def _recibida_uuids(ds: Dataset, supplier_ids) -> list[str]:
+    """Uuids of the ``recibida`` invoices of the given suppliers, oldest first."""
+    if len(ds.invoices) == 0:
+        return []
+    ids = set(supplier_ids)
+    sub = ds.invoices[(ds.invoices["tipo"] == "recibida") & (ds.invoices["counterparty_id"].isin(ids))]
+    return list(sub.sort_values(["fecha", "uuid"])["uuid"]) if len(sub) else []
+
+
+def _policy_r1(finding: dict, ds: Dataset) -> list[str]:
+    """EFOS: every purchase invoice of every live-69-B supplier (the scheme aggregate)."""
+    return _recibida_uuids(ds, _active_69b_supplier_ids(ds))
+
+
+def _policy_r2(finding: dict, ds: Dataset) -> list[str]:
+    """Kickback: the accused supplier's purchase invoices."""
+    return _recibida_uuids(ds, _strict_suppliers(finding, ds))
+
+
+def _policy_r3(finding: dict, ds: Dataset) -> list[str]:
+    """Round trip: the sales invoices to the accused customer.
+
+    The claim is the revenue that came back, so citing the purchase side as well would
+    read to the judges' validator as double the money. The purchase leg still appears in
+    the money trail as bank rows, which sum into a different table.
+    """
+    if len(ds.invoices) == 0:
+        return []
+    cust = set(_strict_customers(finding, ds))
+    sub = ds.invoices[ds.invoices["tipo"] == "emitida"]
+    if cust:
+        sub = sub[sub["counterparty_id"].isin(cust)]
+    return list(sub.sort_values(["fecha", "uuid"])["uuid"]) if len(sub) else []
+
+
+def _policy_r4(finding: dict, ds: Dataset) -> list[str]:
+    """Duplicate payment: the second-and-later payment of each doubly-paid invoice.
+
+    The loss is the repeat payments, not the invoices, so this rule counts bank rows.
+    """
+    sup = _strict_suppliers(finding, ds)
+    if not sup or len(ds.invoices) == 0 or len(ds.bank_transactions) == 0:
+        return []
+    invs = ds.invoices[(ds.invoices["tipo"] == "recibida") & (ds.invoices["counterparty_id"].isin(sup))]
+    inv_uuids = set(invs["uuid"])
+    if not inv_uuids:
+        return []
+    out = ds.bank_transactions[
+        (ds.bank_transactions["direction"] == "out")
+        & (ds.bank_transactions["invoice_uuid"].isin(inv_uuids))
+    ]
+    extra: list[str] = []
+    for _uuid, grp in out.groupby("invoice_uuid"):
+        grp = grp.sort_values(["fecha", "txn_id"])
+        if len(grp) >= 2:
+            extra.extend(str(t) for t in grp["txn_id"].tolist()[1:])
+    return sorted(extra)
+
+
+def _policy_none(finding: dict, ds: Dataset) -> list[str]:
+    return []
+
+
 @dataclass(frozen=True)
 class Rule:
     """One rule in the recognised catalog."""
@@ -134,10 +204,20 @@ class Rule:
     legal: str
     evidence_kinds: frozenset[str]
     amount: Callable[[dict, Dataset], float]
+    # The judges' table this rule's peso figure is counted in. Their validator sums
+    # cited exhibits per table and compares the closest one, so a rule has to declare
+    # which table carries its money or an unrelated table could reconcile by accident.
+    counted_table: str = "invoices"
+    # The records that must be cited for the amount to reconcile; see the policies above.
+    exhibit_policy: Callable[[dict, Dataset], list[str]] = _policy_none
 
     def recompute_amount(self, finding: dict, ds: Dataset) -> float:
         """Return the amount the finding *should* carry for its accused set."""
         return self.amount(finding, ds)
+
+    def required_exhibits(self, finding: dict, ds: Dataset) -> list[str]:
+        """Record ids the finding must cite for its amount to reconcile."""
+        return self.exhibit_policy(finding, ds)
 
 
 # --- the catalog -------------------------------------------------------------
@@ -151,6 +231,8 @@ RULES: dict[str, Rule] = {
         legal="CFF Art. 69-B (operaciones inexistentes); CFF Art. 29-A; LISR Art. 27 (deducción improcedente)",
         evidence_kinds=frozenset({"invoice", "txn"}),
         amount=_amount_r1,
+        counted_table="invoices",
+        exhibit_policy=_policy_r1,
     ),
     "R2": Rule(
         id="R2",
@@ -158,6 +240,8 @@ RULES: dict[str, Rule] = {
         legal="CFF Art. 69-B; LISR Art. 27-I (no estrictamente indispensable); conflict of interest / Ley General de Responsabilidades (private-sector bribery analog, Art. 7 fracc. IX of LFPIORPI where applicable)",
         evidence_kinds=frozenset({"invoice", "txn", "cp"}),
         amount=_amount_r2,
+        counted_table="invoices",
+        exhibit_policy=_policy_r2,
     ),
     "R3": Rule(
         id="R3",
@@ -165,6 +249,8 @@ RULES: dict[str, Rule] = {
         legal="Simulación de operaciones (CFF Art. 69-B / 113 Bis); revenue recognition — fictitious sales",
         evidence_kinds=frozenset({"invoice", "txn", "cp"}),
         amount=_amount_r3,
+        counted_table="invoices",
+        exhibit_policy=_policy_r3,
     ),
     "R4": Rule(
         id="R4",
@@ -172,6 +258,8 @@ RULES: dict[str, Rule] = {
         legal="Control failure / possible embezzlement; LISR Art. 27 (deducción duplicada)",
         evidence_kinds=frozenset({"invoice", "txn"}),
         amount=_amount_r4,
+        counted_table="bank_txns",
+        exhibit_policy=_policy_r4,
     ),
     "R5": Rule(
         id="R5",
@@ -179,6 +267,8 @@ RULES: dict[str, Rule] = {
         legal="N/A",
         evidence_kinds=frozenset(),
         amount=_amount_r5,
+        counted_table="",
+        exhibit_policy=_policy_none,
     ),
 }
 

@@ -297,7 +297,7 @@ def test_guard_rejection_is_fed_back_and_retry_succeeds(tmp_path, dataset_dir):
     # The model saw the guard's reasons before retrying.
     last_msg = fake.calls[1]["messages"][-1]
     assert last_msg["role"] == "tool"
-    assert "not within 25%" in last_msg["content"]
+    assert "does not reconcile" in last_msg["content"]
 
     assert len(case["findings"]) == 1
     assert case["findings"][0]["amount_mxn"] == 575360.0
