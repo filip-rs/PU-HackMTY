@@ -117,3 +117,30 @@ names the real rules from `RULES`, so R6/R7 auto-join); `park_lead` is a new `de
 and `agent/steplog.py`; `_drop_reason` now returns the unverified detectors too. Note: the issue's literal
 `test_escalation_cap` expected S00009 to be *un*-escalated, but rank order puts S00009 before S00026 — the test was
 written to the actual "first N in rank order" behaviour.
+
+## 2026-09-12 17:30 · Exporting to the judges' schema deleted one scheme's only tell
+Tried: #80 — project our estate down to the judges' `estate_schema.sql` so held-out numbers are measured on
+the shape they actually score.
+Happened: their schema has no employee address column and no goods-receipts table. The kickback scheme's
+naive tell (supplier registered at the purchasing manager's home) simply does not exist in their world, and
+`detect_employee_address_match` returns nothing on an exported estate. The scheme survives only because #84
+had already made the kickback signature fire on `detect_kickback_outflow` alone — the shell's own bank
+statement paying the buyer's personal account. Two other things vanished: proof of delivery became the
+purchase order, and customers stopped existing as master rows.
+Changed: the export gives planted phantom/kickback/round-trip invoices **no** purchase order, so the missing
+requisition trail is their tell in the judges' world; `payroll` transfers got a named clearing-account CLABE,
+because their schema gives a bank row two CLABEs and our own statement left the counterparty blank — a test
+we wrote caught that before the judges' validator would have.
+Lesson: a schema is an argument about what counts as evidence. Porting to someone else's schema is not a
+format conversion, it deletes the evidence their schema has no room for, and you find out which of your
+detectors were load-bearing. Ours survived on one leg, and only because a defensive change landed first.
+
+## 2026-09-12 17:30 · The whole judges' pipeline runs end to end
+Tried: export seed 42 to `estate.db`, load it with the #79 adapter, investigate with `--no-llm`, write a
+submission, and run the judges' own `validate_format.py --estate` against their database.
+Happened: all four planted schemes found (recall 1.0), zero decoys accused, and their validator passed with
+`--estate`, which is the strict mode: every cited `record_id` resolves in their SQLite file and every
+`peso_amount` reconciles to its exhibits within 2%. The 2% guard from #87 is what makes that pass; under the
+old 25% tolerance the submission writer was silently rewriting amounts to fit.
+Changed: nothing — this is the first run where our output is checked by the judges' own code on the judges'
+own data shape rather than by our tests on ours.

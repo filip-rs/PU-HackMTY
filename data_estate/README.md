@@ -10,6 +10,8 @@ python -m data_estate.generate --seed 100 --n 5 --out data_estate/out/batch_100 
 python -m data_estate.generate --seed 5 --schemes "" --out data_estate/out/clean   # honest books, decoys only
 python -m data_estate.validate data_estate/out/company_42                    # integrity checks (run in CI)
 python -m data_estate.score data_estate/out/company_42 case_file.json        # score an agent's output
+
+python -m data_estate.generate --seed 42 --format judges --out data_estate/out/estate_42   # the judges' schema
 ```
 
 No dependencies beyond the standard library.
@@ -66,3 +68,40 @@ See docstring in `data_estate/score.py`. Every finding needs `scheme_type`, `acc
 - New scheme: add a `scheme_<name>` method on `Generator`, append to `self.e.truth["schemes"]`,
   register it in `build()`'s table, and add its naive tell to `validate.py`.
 - Judges' live injection: call `generate` with a fresh seed and a scheme subset the agent has never seen.
+
+## The judges' schema (`--format judges`)
+
+The judges score on estates built to their own `estate_schema.sql` and hand us one at a
+path at run time, so our held-out numbers have to be measured on that shape. `--format
+judges` projects an estate down to it (`data_estate/export_judges.py`):
+
+```
+estate_<seed>/estate.db                    the eight tables, their columns in their order
+estate_<seed>/csv/<table>.csv              the same rows as CSV
+estate_<seed>/hidden/ground_truth.json     the judges' answer-key shape
+estate_<seed>/hidden/ground_truth_internal.json   our own shape, for the legacy scorer
+```
+
+`--format legacy` is the default and is byte-identical to what it always wrote, so
+`company_42` stays frozen. `data_estate/out/estate_42` is the frozen judges'-schema
+export of the same seed; both are checksum-tested in `tests/test_frozen_dataset.py`.
+The export is deterministic down to the bytes of the SQLite file.
+
+| Judges' table | Built from | Notes |
+|---|---|---|
+| `vendors` | `suppliers` | `address` joins street and city; `contact_email` is a deterministic slug |
+| `invoices` | `invoices` | `concepto_text` is our `descripcion`; `status` defaults to `vigente` |
+| `ledger` | `ledger` | `entry_id` becomes an integer; `cost_center` from the supplier category; `approver` named on invoice rows and blank on payment rows, because an unsigned payment is itself evidence |
+| `bank_txns` | `bank_transactions` + the **outgoing** `counterparty_bank` legs | The schema has no `invoice_uuid` column, so the link lives in `reference` where a real statement carries it. Incoming third-party legs are dropped: they mirror payments already exported from our own statement and would show the same peso twice |
+| `purchase_orders` | invoices with a goods receipt, plus honest service invoices | The planted phantom, kickback and round-trip invoices get **no** PO. That absence is their tell here |
+| `contracts` | `renta_util` suppliers and the shared-address freight decoy | The standing agreement that explains a repeated amount |
+| `employees` | `employees` | `emp_id` becomes `EMP:00002`. **No address column**: the kickback's naive tell is gone by construction and the scheme must be proved through the third-party bank leg and the approver |
+| `efos_list` | `efos_69b` | Only `presunto` and `definitivo`; the judges' schema has two statuses, not our four |
+
+Two things the projection loses on purpose. Goods receipts have no table, so a purchase
+order stands in as the delivery trail. Customers have no master table, so a customer
+exists only as an RFC on the sales invoices it received.
+
+A double payment is not one of the judges' five scheme types. It is exported under
+`control_observations` rather than `schemes`, because the supplier is honest and
+accusing them would be a false accusation.

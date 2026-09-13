@@ -11,6 +11,7 @@ __pycache__/
 # generated datasets: only the frozen company_42 and the example case file are committed
 data_estate/out/*
 !data_estate/out/company_42/
+!data_estate/out/estate_42/
 !data_estate/out/example_case_file_for_seed42.json
 /out/
 # agent run outputs
