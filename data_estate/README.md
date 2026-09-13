@@ -85,7 +85,13 @@ estate_<seed>/hidden/ground_truth_internal.json   our own shape, for the legacy 
 `--format legacy` is the default and is byte-identical to what it always wrote, so
 `company_42` stays frozen. `data_estate/out/estate_42` is the frozen judges'-schema
 export of the same seed; both are checksum-tested in `tests/test_frozen_dataset.py`.
-The export is deterministic down to the bytes of the SQLite file.
+
+The export is deterministic: the same seed produces the same CSVs and the same ground
+truth, byte for byte. **`estate.db` is the exception** — bytes 96-99 of a SQLite header
+are the version number of the library that wrote it, so the same rows produce a
+different file on a machine with a different SQLite build. The frozen digest therefore
+skips `.db`, and the database is compared by content (every table, every column, in
+order) rather than by bytes.
 
 | Judges' table | Built from | Notes |
 |---|---|---|

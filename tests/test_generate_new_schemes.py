@@ -232,10 +232,31 @@ def test_company_42_is_still_byte_identical(tmp_path):
             assert (out / path.relative_to(FROZEN_LEGACY)).read_bytes() == path.read_bytes(), path.name
 
 
-def test_estate_42_is_still_byte_identical(tmp_path):
+def test_estate_42_is_unchanged(tmp_path):
+    """CSVs and ground truth byte-for-byte; the SQLite file by content.
+
+    A SQLite file is not byte-portable: bytes 96-99 of its header are the version of the
+    library that wrote it, so the same rows produce different bytes on a machine with a
+    different SQLite build. The rows are what matter, so those are what we compare.
+    """
+    import sqlite3
+
+    from data_estate.export_judges import SCHEMA
+
     out = tmp_path / "estate_42"
     write_judges_estate(Generator(42).build(["efos", "kickback", "roundtrip", "duplicate"]),
                         out, seed=42, company=COMPANY)
     for path in sorted(FROZEN_JUDGES.rglob("*")):
-        if path.is_file():
+        if path.is_file() and path.suffix != ".db":
             assert (out / path.relative_to(FROZEN_JUDGES)).read_bytes() == path.read_bytes(), path.name
+
+    fresh = sqlite3.connect(out / "estate.db")
+    frozen = sqlite3.connect(FROZEN_JUDGES / "estate.db")
+    try:
+        for table, columns in SCHEMA.items():
+            order = ", ".join(columns)
+            query = f"SELECT {order} FROM {table} ORDER BY {columns[0]}"
+            assert fresh.execute(query).fetchall() == frozen.execute(query).fetchall(), table
+    finally:
+        fresh.close()
+        frozen.close()
