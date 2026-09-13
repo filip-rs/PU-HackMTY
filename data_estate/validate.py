@@ -17,6 +17,7 @@ import csv
 import json
 import sys
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 
 
@@ -104,6 +105,25 @@ def check(out: Path) -> list[str]:
     emp_addr = {(e["home_street"], e["home_city"]): e["employee_id"] for e in d["employees"]}
     sup_by = {s["supplier_id"]: s for s in d["suppliers"]}
 
+    # Internal purchasing policy; the threshold_splitting scheme is defined against it.
+    from .generate import APPROVAL_LIMIT_SUBTOTAL
+    limit = APPROVAL_LIMIT_SUBTOTAL["Gerente de Compras"]
+
+    def _clusters(sid: str) -> list[list[dict]]:
+        """Purchase invoices of one supplier grouped into runs <= 2 days apart."""
+        rows = sorted(
+            (i for i in d["invoices"] if i["counterparty_id"] == sid and i["tipo"] == "recibida"),
+            key=lambda i: i["fecha"],
+        )
+        out: list[list[dict]] = []
+        for inv in rows:
+            day = date.fromisoformat(inv["fecha"])
+            if out and (day - date.fromisoformat(out[-1][-1]["fecha"])).days <= 2:
+                out[-1].append(inv)
+            else:
+                out.append([inv])
+        return out
+
     def flags(sid: str) -> set[str]:
         s = sup_by[sid]
         f = set()
@@ -113,7 +133,21 @@ def check(out: Path) -> list[str]:
             f.add("employee_address")
         if any(len(v) > 1 for k, v in payments_for.items() if inv_by[k]["counterparty_id"] == sid):
             f.add("double_paid")
+        # >=3 invoices within 2 days, each between 80% and 100% of the approval limit.
+        for cluster in _clusters(sid):
+            if len(cluster) >= 3 and all(
+                0.8 * limit <= float(i["subtotal"]) < limit for i in cluster
+            ):
+                f.add("threshold_cluster")
+                break
         return f
+
+    def customer_flags(cid: str) -> set[str]:
+        """A customer whose sales were booked as revenue but never collected."""
+        sales = [i for i in d["invoices"] if i["tipo"] == "emitida" and i["counterparty_id"] == cid]
+        if sales and not any(payments_for.get(i["uuid"]) for i in sales):
+            return {"uncollected_sales"}
+        return set()
 
     for s in d["truth"]["schemes"]:
         for ent in s["entities"]:
@@ -124,6 +158,11 @@ def check(out: Path) -> list[str]:
                 errs.append(f"kickback shell {sid} not at employee address")
             if s["type"] == "duplicate_invoice_payment" and "double_paid" not in flags(sid):
                 errs.append(f"duplicate scheme supplier {sid} has no double payment")
+            if s["type"] == "threshold_splitting" and "threshold_cluster" not in flags(sid):
+                errs.append(f"threshold scheme supplier {sid} has no sub-limit cluster")
+            cid = ent.get("customer_id")
+            if s["type"] == "revenue_inflation" and cid and "uncollected_sales" not in customer_flags(cid):
+                errs.append(f"revenue scheme customer {cid} has no uncollected sales")
     for dec in d["truth"]["decoys"]:
         f = flags(dec["supplier_id"])
         if f:

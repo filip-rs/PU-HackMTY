@@ -39,6 +39,15 @@ FY_START = date(2025, 1, 1)
 FY_END = date(2025, 12, 31)
 IVA = 0.16
 
+# Internal purchasing policy: what each role may approve, on the invoice SUBTOTAL.
+# A judge will ask where this number lives; it lives here, in code, and agent/rules.py
+# mirrors it for the detector. Splitting a purchase to stay under a limit is the
+# threshold_splitting scheme.
+APPROVAL_LIMIT_SUBTOTAL = {
+    "Gerente de Compras": 250_000.0,
+    "Director General": float("inf"),
+}
+
 COMPANY = {
     "name": "Talleres Industriales del Norte SA de CV",
     "rfc": "TIN091214KL3",
@@ -261,6 +270,11 @@ class Estate:
     counterparty_bank: list[CounterpartyTxn] = field(default_factory=list)
     ledger: list[LedgerEntry] = field(default_factory=list)
     efos: list[dict] = field(default_factory=list)
+    # Uuids of sales invoices cancelled after the fact. The judges' schema has an
+    # invoices.status column for this; our legacy CSV layout does not, and adding one
+    # would change every byte of the frozen company_42, so it is tracked here and read
+    # only by data_estate/export_judges.py.
+    cancelled: set[str] = field(default_factory=set)
     truth: dict = field(default_factory=lambda: {"schemes": [], "decoys": []})
 
 
@@ -629,9 +643,101 @@ class Generator:
             "how_to_prove": "Two bank txns referencing the same UUID; second CLABE ≠ master; GL bypasses 2100.",
             "note": "Supplier itself is honest — the accusation should target the payment, not the supplier."})
 
+    def scheme_threshold_splitting(self):
+        """One purchase, split into invoices that each sit just under an approval limit.
+
+        The goods are real and the receipts are genuine. The fraud is against the
+        company's own control: the purchasing manager may approve up to MXN 250,000, so
+        a 900,000 order arrives as four invoices of ~230,000 two days apart and nobody
+        above him ever sees it. No single row is odd; only the cluster is.
+        """
+        rng = self.rng
+        buyer = self.emp("Gerente de Compras")
+        limit = APPROVAL_LIMIT_SUBTOTAL["Gerente de Compras"]
+        vendor = self.make_supplier(
+            "refacciones",
+            onboarded=rand_date(rng, date(2025, 1, 10), date(2025, 3, 1)),
+            approved_by=buyer.employee_id,
+        )
+        part = rng.choice(["Rodamientos SKF", "Motor eléctrico 5HP", "Válvulas neumáticas"])
+        invs, txs, clusters = [], [], []
+        total = 0.0
+        # Three clusters, each at least 30 days after the previous one.
+        start = date(2025, 3, 10)
+        for k in range(3):
+            base = business_day(start + timedelta(days=k * rng.randint(30, 55)))
+            cluster_uuids = []
+            for j in range(rng.randint(3, 4)):
+                d = business_day(base + timedelta(days=min(j, 2)))
+                subtotal = round(rng.uniform(0.80, 0.98) * limit, 2)
+                inv = self.purchase_invoice(vendor, d, subtotal, descripcion=part,
+                                            with_receipt=True, approved_by=buyer.employee_id)
+                cluster_uuids.append(inv.uuid)
+                invs.append(inv.uuid)
+                txs.extend(t.txn_id for t in self.e.bank if t.invoice_uuid == inv.uuid)
+                total += inv.total
+            clusters.append(cluster_uuids)
+        self.e.truth["schemes"].append({
+            "type": "threshold_splitting",
+            "description": "Purchases split across same-week invoices that each sit just under the "
+                           "purchasing manager's approval limit, so no higher approval was ever sought.",
+            "rule": "Fraccionamiento de operaciones para evadir niveles de autorización; "
+                    "LGRA / política interna de compras; CFF Art. 83 (comprobantes) — "
+                    "approval-limit circumvention",
+            "entities": [{"supplier_id": vendor.supplier_id, "rfc": vendor.rfc, "name": vendor.name,
+                          "employee_id": buyer.employee_id, "employee_name": buyer.name,
+                          "approval_limit": limit, "clusters": clusters,
+                          "invoice_uuids": invs, "bank_txn_ids": txs}],
+            "amount_mxn": round(total, 2),
+            "how_to_prove": "Three or more invoices from one vendor within two business days, each "
+                            "between 80% and 100% of the approver's limit, summing well above it."})
+
+    def scheme_revenue_inflation(self):
+        """Revenue booked for sales that were never collected, some later cancelled.
+
+        Money never moves, so no bank rule can see it. The tell is in the books: the
+        ledger credits 4000 Ventas, no payment ever arrives, and one or two of the
+        invoices are cancelled at SAT without anyone reversing the revenue entry.
+        """
+        rng = self.rng
+        st, ct = address(rng)
+        cust = Customer(self.nid("C"), f"Comercial {rng.choice(LAST)} SA de CV",
+                        rfc_moral(rng), st, ct, clabe(rng))
+        self.e.customers.append(cust)
+        invs = []
+        total = 0.0
+        for _ in range(rng.randint(3, 5)):
+            d = business_day(rand_date(rng, FY_END - timedelta(days=45), FY_END - timedelta(days=2)))
+            # pay=False: the revenue is booked, the cash never arrives.
+            inv = self.sales_invoice(cust, d, rng.uniform(150_000, 400_000), pay=False,
+                                     descripcion="Fabricación de estructura (pedido especial)")
+            invs.append(inv.uuid)
+            total += inv.total
+        # One or two are cancelled at SAT; the ledger keeps the revenue either way.
+        for uuid_ in rng.sample(invs, min(len(invs), rng.randint(1, 2))):
+            self.e.cancelled.add(uuid_)
+        self.e.truth["schemes"].append({
+            "type": "revenue_inflation",
+            "description": "Sales invoices to a brand-new customer, booked as revenue, never collected; "
+                           "some cancelled at SAT with no reversing ledger entry.",
+            "rule": "Ingresos simulados / reconocimiento indebido de ingresos; CFF Art. 69-B / 113 Bis; "
+                    "NIF D-1 (ingresos)",
+            "entities": [{"customer_id": cust.customer_id, "rfc": cust.rfc, "name": cust.name,
+                          "invoice_uuids": invs, "bank_txn_ids": [],
+                          "cancelled_uuids": sorted(self.e.cancelled & set(invs))}],
+            "amount_mxn": round(total, 2),
+            "how_to_prove": "Revenue credited to 4000 with no inbound payment for the invoice, a customer "
+                            "with no collection history, and cancellations with no reversing entry."})
+
     # ---- decoys: honest suppliers that look suspicious ---------------------
 
-    def decoys(self):
+    def decoys(self, extra: bool = False):
+        """Honest suppliers that trip a detector and check out on inspection.
+
+        ``extra`` adds D6 and D7, which target the newer schemes. They are opt-in
+        because they create suppliers, and :func:`renumber` shuffles supplier ids, so
+        adding them to every estate would change every id in the frozen company_42.
+        """
         rng = self.rng
 
         # D1: brand-new supplier, round-number invoices, but full delivery trail
@@ -700,6 +806,43 @@ class Generator:
             "why_honest": "Each cash invoice is under the MXN 2,000 deductibility threshold (LISR Art. 27-III); "
                           "goods received."})
 
+        if not extra:
+            return
+
+        buyer = self.emp("Gerente de Compras")
+        buyer_bank = buyer.personal_clabe[:3]
+
+        # D6: shares a bank with the purchasing manager. Same three-digit institution
+        # code, different account, and no transfer ever passes between the two. A
+        # kickback check that matched on bank code instead of account would accuse them.
+        s6 = self.make_supplier("materia_prima", onboarded=rand_date(rng, date(2021, 1, 1), date(2024, 6, 1)),
+                                clabe_=buyer_bank + "".join(rng.choices(string.digits, k=15)))
+        for _ in range(rng.randint(4, 7)):
+            d = business_day(rand_date(rng, FY_START, FY_END - timedelta(days=10)))
+            self.purchase_invoice(s6, d, rng.uniform(20_000, 90_000), with_receipt=True)
+        self.e.truth["decoys"].append({
+            "supplier_id": s6.supplier_id, "rfc": s6.rfc, "name": s6.name,
+            "looks_like": f"Banks at the same institution as {buyer.name} (bank code {buyer_bank})",
+            "why_honest": f"Same bank code {buyer_bank}, different account; no transfer between the two "
+                          f"accounts in any statement; every invoice has a goods receipt."})
+
+        # D7: twelve identical monthly invoices just under the approval limit. It looks
+        # like threshold splitting until you notice they are one per month, not
+        # clustered, and a framework contract fixes the fee.
+        limit = APPROVAL_LIMIT_SUBTOTAL["Gerente de Compras"]
+        s7 = self.make_supplier("servicios", onboarded=date(2023, 11, 15))
+        monthly = round(0.9 * limit, 2)
+        for month in range(1, 13):
+            d = business_day(date(2025, month, min(5 + rng.randint(0, 3), 28)))
+            self.purchase_invoice(s7, d, monthly, descripcion="Mantenimiento preventivo mensual",
+                                  with_receipt=False)
+        self.e.truth["decoys"].append({
+            "supplier_id": s7.supplier_id, "rfc": s7.rfc, "name": s7.name,
+            "looks_like": f"Twelve invoices of MXN {monthly:,.2f}, just under the "
+                          f"MXN {limit:,.0f} approval limit",
+            "why_honest": "One invoice per month under a framework contract that fixes the monthly fee; "
+                          "never clustered within days, and the contract is on file."})
+
     # ---- assembly ----------------------------------------------------------
 
     def build(self, schemes: list[str]):
@@ -708,10 +851,16 @@ class Generator:
         self.make_customers()
         self.baseline()
         table = {"efos": self.scheme_efos, "kickback": self.scheme_kickback,
-                 "roundtrip": self.scheme_round_trip, "duplicate": self.scheme_duplicate_payment}
+                 "roundtrip": self.scheme_round_trip, "duplicate": self.scheme_duplicate_payment,
+                 "threshold": self.scheme_threshold_splitting,
+                 "revenue": self.scheme_revenue_inflation}
         for name in schemes:
             table[name]()
-        self.decoys()
+        # The two newer decoys (D6, D7) only appear on estates that carry a newer
+        # scheme. They add suppliers, and renumber() shuffles supplier ids, so adding
+        # them unconditionally would change every id in the frozen company_42 and
+        # estate_42. See the PR for #81: the frozen pair predates them.
+        self.decoys(extra=any(name in schemes for name in ("threshold", "revenue")))
         self.e.invoices.sort(key=lambda i: i.fecha)
         self.e.bank.sort(key=lambda t: t.fecha)
         self.e.ledger.sort(key=lambda g: g.fecha)
