@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,6 +108,10 @@ class LLM:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.by_role: dict[str, dict] = {}
+        # #71: the client is shared across worker threads; guard the counter
+        # mutations and the on-disk cache write so concurrent replies cannot
+        # corrupt run-metadata totals or leave a torn cache file.
+        self._lock = threading.Lock()
 
     def stats(self) -> dict:
         """#89: the run-metadata counters (calls, tokens, cost-relevant splits)."""
@@ -120,25 +125,26 @@ class LLM:
 
     def _count(self, reply: "Reply", role: str) -> None:
         """Fold one reply into the #89 counters (uncached tokens only)."""
-        self.calls += 1
-        usage = reply.usage or {}
-        p = int(usage.get("prompt_tokens", 0) or 0)
-        c = int(usage.get("completion_tokens", 0) or 0)
-        if reply.cached:
-            self.cached_calls += 1
-        else:
-            self.prompt_tokens += p
-            self.completion_tokens += c
-        if role:
-            r = self.by_role.setdefault(
-                role, {"calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
-            )
-            r["calls"] += 1
+        with self._lock:
+            self.calls += 1
+            usage = reply.usage or {}
+            p = int(usage.get("prompt_tokens", 0) or 0)
+            c = int(usage.get("completion_tokens", 0) or 0)
             if reply.cached:
-                r["cached_calls"] += 1
+                self.cached_calls += 1
             else:
-                r["prompt_tokens"] += p
-                r["completion_tokens"] += c
+                self.prompt_tokens += p
+                self.completion_tokens += c
+            if role:
+                r = self.by_role.setdefault(
+                    role, {"calls": 0, "cached_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+                )
+                r["calls"] += 1
+                if reply.cached:
+                    r["cached_calls"] += 1
+                else:
+                    r["prompt_tokens"] += p
+                    r["completion_tokens"] += c
 
     # -- cache -------------------------------------------------------------
     def _cache_enabled(self) -> bool:
@@ -223,22 +229,32 @@ class LLM:
         # generous: reasoning models burn completion tokens on reasoning_content
         # before the answer starts, so a tight cap makes content come back null
         key = self._cache_key(messages, tools, tool_choice, max_tokens)
+        cache_file = self.cache_dir / f"{key}.json" if self.cache_dir is not None else None
 
-        if self._cache_enabled() and self.cache_dir is not None:
-            cache_file = self.cache_dir / f"{key}.json"
+        if self._cache_enabled() and cache_file is not None:
+            raw = None
             if cache_file.exists():
-                raw = json.loads(cache_file.read_text(encoding="utf-8"))
+                try:
+                    raw = json.loads(cache_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    # A torn file (a crash mid-write under the old non-atomic scheme)
+                    # is treated as a cache miss: fall through to a network call.
+                    raw = None
+            if raw is not None:
                 reply = self._build_reply(raw, cached=True)
                 self._count(reply, role)
                 return reply
 
         raw = self._request(messages, tools, tool_choice, max_tokens)
 
-        if self._cache_enabled() and self.cache_dir is not None:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            (self.cache_dir / f"{key}.json").write_text(
-                json.dumps(raw, ensure_ascii=False, default=str), encoding="utf-8"
-            )
+        if self._cache_enabled() and cache_file is not None:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            # #71: write to a per-thread temp then atomically replace, so two
+            # threads finishing the same key cannot leave a torn file (and a
+            # concurrent reader never sees a half-written one).
+            tmp = cache_file.with_name(f"{cache_file.name}.{threading.get_ident()}.tmp")
+            tmp.write_text(json.dumps(raw, ensure_ascii=False, default=str), encoding="utf-8")
+            os.replace(tmp, cache_file)
 
         reply = self._build_reply(raw, cached=False)
         self._count(reply, role)
@@ -298,7 +314,13 @@ class FakeLLM:
         )
         if not self._replies:
             raise RuntimeError("FakeLLM exhausted")
-        reply = self._replies.pop(0)
+        # #71: a lone callable is treated as a persistent reply function. Concurrent
+        # units each drive it with their own messages, so it is never popped and
+        # consumed (the parallel test uses a message-content-driven callable).
+        if len(self._replies) == 1 and callable(self._replies[0]):
+            reply = self._replies[0]
+        else:
+            reply = self._replies.pop(0)
         if callable(reply):
             reply = reply(messages)
         if not isinstance(reply, Reply):

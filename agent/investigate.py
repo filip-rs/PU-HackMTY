@@ -33,7 +33,7 @@ when the records support an innocent explanation, *escalated* to the model (up t
 accusation — it is parked as a "suspicious, unproven" entry in ``not_pursued``
 (the R5 rule has no amount recomputation, so it cannot be proven).
 
-CLI: ``python -m agent.investigate <dataset_dir> [--out case_file.json] [--log runs/T.jsonl] [--max-leads 12] [--max-steps 12] [--max-escalations 4] [--no-llm]``
+CLI: ``python -m agent.investigate <dataset_dir> [--out case_file.json] [--log runs/T.jsonl] [--max-leads 12] [--max-steps 12] [--max-escalations 4] [--workers 4] [--no-llm]``
 or ``python -m agent.investigate --replay <log.jsonl|case_file.json> [--out ...]`` to rebuild a
 run offline from its step log (never constructs an LLM, works with Wi-Fi off; #93).
 """
@@ -42,8 +42,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -112,24 +114,28 @@ class _Log:
     def __init__(self, path: str | None = None) -> None:
         self.entries: list[dict[str, Any]] = []
         self._step = 0
+        self._lock = threading.Lock()
         self._fh = None
         if path is not None:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             self._fh = open(path, "w", encoding="utf-8")
 
     def emit(self, kind: str, entity_id: str = "", payload: dict | None = None) -> dict:
-        self._step += 1
-        entry = {
-            "ts": _now_iso(),
-            "entity_id": entity_id or "",
-            "step": self._step,
-            "kind": kind,
-            "payload": payload or {},
-        }
-        self.entries.append(entry)
-        if self._fh is not None:
-            self._fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
-            self._fh.flush()
+        # #71: step assignment + append + flush are atomic across worker threads,
+        # so steps stay strictly increasing and lines never interleave mid-write.
+        with self._lock:
+            self._step += 1
+            entry = {
+                "ts": _now_iso(),
+                "entity_id": entity_id or "",
+                "step": self._step,
+                "kind": kind,
+                "payload": payload or {},
+            }
+            self.entries.append(entry)
+            if self._fh is not None:
+                self._fh.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+                self._fh.flush()
         return entry
 
     def close(self) -> None:
@@ -604,238 +610,289 @@ def _llm_loop(
     max_leads: int,
     max_steps: int,
     max_escalations: int,
+    workers: int = 1,
 ) -> tuple[list[dict], dict[str, str], dict[str, str]]:
     """Run the model investigation per unit and return ``(findings, dropped, parked)``.
 
-    A signature unit is investigated as usual; a rejected ``record_finding`` is fed
-    back and, past the retry budget, the deterministic finding is used (#66). A weak
-    lead (no scheme signature) has three outcomes (#70): *cleared* (the records
-    confirm an innocent explanation and it is dropped, ``escalated: false``),
-    *escalated* (unverified, and the first ``max_escalations`` in rank order are
-    investigated by the model so an unplanned scheme can still be found), or
-    *unverified* (dropped past the cap). An accepted ``other`` finding is parked, not
-    accused. ``parked`` maps an entity to the "suspicious, unproven" reason.
+    #71: units are investigated concurrently. A signature unit is investigated as
+    usual; a rejected ``record_finding`` is fed back and, past the retry budget, the
+    deterministic finding is used (#66). A weak lead (no scheme signature) has three
+    outcomes (#70): *cleared* (the records confirm an innocent explanation and it is
+    dropped, ``escalated: false``), *escalated* (unverified, and the first
+    ``max_escalations`` in rank order are investigated by the model so an unplanned
+    scheme can still be found), or *unverified* (dropped past the cap). An accepted
+    ``other`` finding is parked, not accused.
+
+    The escalation cap is decided *before* any worker starts (the first N unverified
+    weak units in rank order), so it is not a race. Each unit's plan is computed
+    deterministically, then the units run on a ``ThreadPoolExecutor(max_workers=
+    workers)`` when ``workers > 1``; results are merged in unit rank order (so
+    ``findings`` / ``not_pursued`` are deterministic regardless of completion order).
+    ``workers=1`` runs the units sequentially and reproduces the pre-#71 log exactly.
     """
+    tools = Tools(ds)
+    all_tools = TOOL_SCHEMAS + TERMINAL_TOOLS
+    selected = units[:max_leads]
+
+    # Decide each unit's plan before submission (#70's escalation cap is not a race).
+    plans: list[dict] = []
+    escalated_count = 0  # weak leads already escalated this run
+    for unit in selected:
+        if unit["scheme_hint"]:
+            plans.append({"action": "investigate"})
+            continue
+        reason, verified, unverified_dets = _drop_reason(unit["members"][0], ds)
+        if verified:
+            plans.append({"action": "clear", "reason": reason})
+        elif escalated_count < max_escalations:
+            escalated_count += 1
+            plans.append({"action": "escalate", "unverified_dets": unverified_dets})
+        else:
+            plans.append({"action": "unverified", "reason": reason})
+
+    def _run(unit: dict, plan: dict):
+        return _investigate_unit(unit, ds, llm, rec, tools, max_steps, plan, all_tools)
+
+    if workers <= 1:
+        results = [_run(u, p) for u, p in zip(selected, plans)]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = [ex.submit(_run, u, p) for u, p in zip(selected, plans)]
+            results = [f.result() for f in futures]
+
     findings: list[dict] = []
     dropped: dict[str, str] = {}
     parked: dict[str, str] = {}
-    tools = Tools(ds)
-    all_tools = TOOL_SCHEMAS + TERMINAL_TOOLS
-    escalated_count = 0  # weak leads already escalated this run (#70 cap)
+    for new_findings, new_dropped, new_parked in results:
+        findings.extend(new_findings)
+        dropped.update(new_dropped)
+        parked.update(new_parked)
+    return findings, dropped, parked
 
-    for unit in units[:max_leads]:
-        eid = unit["entity_id"]
-        rec.emit(
-            "lead",
-            eid,
-            {
-                "entity_id": eid,
-                "name": unit["name"],
-                "rank": unit["rank"],
-                "detectors": unit["detectors"],
-                "n_detectors": unit["n_detectors"],
-                "total_mxn": unit["total_mxn"],
-                "leads": unit["lead_list"],
-            },
-        )
-        hint = unit["scheme_hint"]
-        # A weak lead (no scheme signature) is either cleared by the records,
-        # escalated to the model (#70), or dropped as unverified. Signature
-        # units always go to the model.
-        escalated = False
-        unverified_dets: list[str] = []
-        if not hint:
-            reason, verified, unverified_dets = _drop_reason(unit["members"][0], ds)
-            if verified:
-                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": True, "escalated": False})
-                dropped[eid] = reason
-                continue
-            if escalated_count >= max_escalations:
-                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": False, "escalated": False})
-                dropped[eid] = reason
-                continue
-            escalated_count += 1
-            escalated = True
 
-        messages = _build_messages(unit)
-        if escalated:
-            # The model investigates an unverified weak lead with an extra line
-            # naming what the automatic check could not clear and when to call
-            # record_finding vs. drop_lead.
-            u = messages[1]
-            messages[1] = {"role": "user", "content": u["content"] + "\n" + _escalation_prompt(unverified_dets)}
-        first = True
-        steps = 0
-        terminal = False
-        llm_outcome = ""  # "accepted" | "rejected" | "dropped" | "no_terminal" | "max_steps"
-        llm_reason = ""  # model's drop reason / last guard reasons / model text
-        rf_attempts = 0  # 1-based count of record_finding calls for this unit
-        rejections = 0  # count of record_finding calls rejected by the guard
-        accepted: dict | None = None
+def _investigate_unit(
+    unit: dict,
+    ds: Dataset,
+    llm: Any,
+    rec: _Log,
+    tools: "Tools",
+    max_steps: int,
+    plan: dict,
+    all_tools: list,
+) -> tuple[list[dict], dict[str, str], dict[str, str]]:
+    """Investigate one unit; return ``(new_findings, new_dropped, new_parked)``.
 
-        while not terminal and steps < max_steps:
-            # generous completion budget: reasoning models burn tokens on
-            # reasoning_content first, and a truncated record_finding call loses
-            # scheme_type/rule and gets rejected by the guard
-            reply = llm.chat(messages, tools=all_tools, tool_choice="auto", max_tokens=8192, role="investigator")
-            if first:
+    All of a unit's conversation and ``rec.emit`` calls happen here. The only shared
+    state is ``rec`` (thread-safe via :class:`_Log`) and the read-only ``tools`` /
+    ``llm`` / ``ds``. ``plan`` is decided before submission in :func:`_llm_loop`. One
+    of::
+
+        {"action": "investigate"}                     # signature unit -> model
+        {"action": "clear", "reason": <str>}          # weak, records clear it
+        {"action": "escalate", "unverified_dets": [...]}  # weak, within the cap
+        {"action": "unverified", "reason": <str>}     # weak, past the cap
+    """
+    eid = unit["entity_id"]
+    rec.emit(
+        "lead",
+        eid,
+        {
+            "entity_id": eid,
+            "name": unit["name"],
+            "rank": unit["rank"],
+            "detectors": unit["detectors"],
+            "n_detectors": unit["n_detectors"],
+            "total_mxn": unit["total_mxn"],
+            "leads": unit["lead_list"],
+        },
+    )
+    hint = unit["scheme_hint"]
+    action = plan["action"]
+
+    if action == "clear":
+        rec.emit("decision", eid, {"action": "drop_lead", "reason": plan["reason"], "verified": True, "escalated": False})
+        return [], {eid: plan["reason"]}, {}
+    if action == "unverified":
+        rec.emit("decision", eid, {"action": "drop_lead", "reason": plan["reason"], "verified": False, "escalated": False})
+        return [], {eid: plan["reason"]}, {}
+
+    escalated = action == "escalate"
+    unverified_dets = plan.get("unverified_dets") or []
+
+    messages = _build_messages(unit)
+    if escalated:
+        # The model investigates an unverified weak lead with an extra line naming
+        # what the automatic check could not clear and when to call record_finding
+        # vs. drop_lead.
+        u = messages[1]
+        messages[1] = {"role": "user", "content": u["content"] + "\n" + _escalation_prompt(unverified_dets)}
+    first = True
+    steps = 0
+    terminal = False
+    llm_outcome = ""  # "accepted" | "rejected" | "dropped" | "no_terminal" | "max_steps"
+    llm_reason = ""  # model's drop reason / last guard reasons / model text
+    rf_attempts = 0  # 1-based count of record_finding calls for this unit
+    rejections = 0  # count of record_finding calls rejected by the guard
+    accepted: dict | None = None
+    new_parked: dict[str, str] = {}
+
+    while not terminal and steps < max_steps:
+        # generous completion budget: reasoning models burn tokens on
+        # reasoning_content first, and a truncated record_finding call loses
+        # scheme_type/rule and gets rejected by the guard
+        reply = llm.chat(messages, tools=all_tools, tool_choice="auto", max_tokens=8192, role="investigator")
+        if first:
+            rec.emit(
+                "hypothesis",
+                eid,
+                {
+                    "text": reply.text or (f"{hint} suspected." if hint else "weak lead escalated to the model; investigating."),
+                    "scheme_type": hint or "unconfirmed",
+                    "derived_from": unit["detectors"],
+                },
+            )
+            first = False
+        messages.append(assistant_message(reply))
+        steps += 1
+
+        if not reply.tool_calls:
+            # The model replied with text and no terminal tool call.
+            llm_outcome = "no_terminal"
+            llm_reason = (reply.text or "").strip() or "no terminal tool call"
+            terminal = True
+            break
+
+        for tc in reply.tool_calls:
+            if tc.name in _DATA_TOOL_NAMES:
+                result = _run_data_tool(tools, tc.name, tc.args)
+                n_rows, summary, ids, rows = _summarize(result, ds)
+                rec.emit("tool_call", eid, {"name": tc.name, "args": tc.args})
                 rec.emit(
-                    "hypothesis",
+                    "tool_result",
+                    eid,
+                    {"name": tc.name, "n_rows": n_rows, "summary": summary, "ids": ids, "rows": rows},
+                )
+                messages.append(tool_message(tc, result))
+            elif tc.name == "record_finding":
+                finding = dict(tc.args)
+                rf_attempts += 1
+                rec.emit(
+                    "decision",
+                    eid,
+                    {"action": "record_finding", "finding": finding, "source": "llm", "attempt": rf_attempts, "escalated": escalated},
+                )
+                clean, reasons = guard(finding, ds)
+                rec.emit(
+                    "guard",
                     eid,
                     {
-                        "text": reply.text or (f"{hint} suspected." if hint else "weak lead escalated to the model; investigating."),
-                        "scheme_type": hint or "unconfirmed",
-                        "derived_from": unit["detectors"],
+                        "accepted": clean is not None,
+                        "reasons": reasons,
+                        "finding": _llm_finding_payload(clean) if clean else finding,
+                        "source": "llm",
+                        "attempt": rf_attempts,
+                        "escalated": escalated,
                     },
                 )
-                first = False
-            messages.append(assistant_message(reply))
-            steps += 1
-
-            if not reply.tool_calls:
-                # The model replied with text and no terminal tool call.
-                llm_outcome = "no_terminal"
-                llm_reason = (reply.text or "").strip() or "no terminal tool call"
+                if clean is not None:
+                    if clean["scheme_type"] == "other":
+                        # An `other` finding has no amount recomputation, so it is
+                        # parked as suspicious, never an accusation (#70).
+                        _park_finding(clean, rec, new_parked)
+                        llm_outcome = "parked"
+                        terminal = True
+                        break
+                    accepted = clean
+                    llm_outcome = "accepted"
+                    terminal = True
+                    break
+                # Rejected: keep going. Feed the guard's reasons back as a tool
+                # message so the model can fix the finding and retry, and still
+                # execute any sibling data-tool calls in the reply.
+                rejections += 1
+                llm_reason = "; ".join(reasons) if reasons else "finding rejected by the evidence guard"
+                messages.append(
+                    tool_message(
+                        tc,
+                        {
+                            "accepted": False,
+                            "reasons": reasons,
+                            "hint": "Fix the finding using these reasons and call record_finding again, or call drop_lead.",
+                        },
+                    )
+                )
+                if rejections > MAX_GUARD_RETRIES:
+                    llm_outcome = "rejected"
+                    terminal = True
+                    break
+            elif tc.name == "drop_lead":
+                reason = str(tc.args.get("reason", "dropped"))
+                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "escalated": escalated})
+                llm_outcome = "dropped"
+                llm_reason = reason
                 terminal = True
                 break
 
-            for tc in reply.tool_calls:
-                if tc.name in _DATA_TOOL_NAMES:
-                    result = _run_data_tool(tools, tc.name, tc.args)
-                    n_rows, summary, ids, rows = _summarize(result, ds)
-                    rec.emit("tool_call", eid, {"name": tc.name, "args": tc.args})
-                    rec.emit(
-                        "tool_result",
-                        eid,
-                        {"name": tc.name, "n_rows": n_rows, "summary": summary, "ids": ids, "rows": rows},
-                    )
-                    messages.append(tool_message(tc, result))
-                elif tc.name == "record_finding":
-                    finding = dict(tc.args)
-                    rf_attempts += 1
-                    rec.emit(
-                        "decision",
-                        eid,
-                        {"action": "record_finding", "finding": finding, "source": "llm", "attempt": rf_attempts, "escalated": escalated},
-                    )
-                    clean, reasons = guard(finding, ds)
-                    rec.emit(
-                        "guard",
-                        eid,
-                        {
-                            "accepted": clean is not None,
-                            "reasons": reasons,
-                            "finding": _llm_finding_payload(clean) if clean else finding,
-                            "source": "llm",
-                            "attempt": rf_attempts,
-                            "escalated": escalated,
-                        },
-                    )
-                    if clean is not None:
-                        if clean["scheme_type"] == "other":
-                            # An `other` finding has no amount recomputation, so
-                            # it is parked as suspicious, never an accusation (#70).
-                            _park_finding(clean, rec, parked)
-                            llm_outcome = "parked"
-                            terminal = True
-                            break
-                        accepted = clean
-                        llm_outcome = "accepted"
-                        terminal = True
-                        break
-                    # Rejected: keep going. Feed the guard's reasons back as a
-                    # tool message so the model can fix the finding and retry,
-                    # and still execute any sibling data-tool calls in the reply.
-                    rejections += 1
-                    llm_reason = "; ".join(reasons) if reasons else "finding rejected by the evidence guard"
-                    messages.append(
-                        tool_message(
-                            tc,
-                            {
-                                "accepted": False,
-                                "reasons": reasons,
-                                "hint": "Fix the finding using these reasons and call record_finding again, or call drop_lead.",
-                            },
-                        )
-                    )
-                    if rejections > MAX_GUARD_RETRIES:
-                        llm_outcome = "rejected"
-                        terminal = True
-                        break
-                elif tc.name == "drop_lead":
-                    reason = str(tc.args.get("reason", "dropped"))
-                    rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "escalated": escalated})
-                    llm_outcome = "dropped"
-                    llm_reason = reason
-                    terminal = True
-                    break
+    if not terminal and steps >= max_steps:
+        llm_outcome = "max_steps"
+        llm_reason = f"reached {max_steps} tool calls without a terminal decision"
 
-        if not terminal and steps >= max_steps:
-            llm_outcome = "max_steps"
-            llm_reason = f"reached {max_steps} tool calls without a terminal decision"
+    if accepted is not None:
+        return [accepted], {}, {}
 
-        if accepted is not None:
-            findings.append(accepted)
-            continue
+    # An escalated weak lead gets no deterministic fallback (#70): the model either
+    # proved a scheme, parked an `other`, or we drop it here.
+    if escalated:
+        if llm_outcome == "parked":
+            return [], {}, new_parked
+        dets = ", ".join(unverified_dets) or "unknown detectors"
+        if llm_outcome == "rejected":
+            final_reason = f"unverified: {dets} (model: {llm_reason or 'no narrative'})"
+            rec.emit("decision", eid, {"action": "drop_lead", "reason": final_reason, "escalated": True})
+            return [], {eid: final_reason}, {}
+        if llm_outcome == "dropped":
+            # the drop_lead decision was already emitted with the model reason
+            return [], {eid: llm_reason}, {}
+        # no_terminal / max_steps: no terminal decision was emitted yet
+        final_reason = llm_reason or f"unverified: {dets}"
+        rec.emit("decision", eid, {"action": "drop_lead", "reason": final_reason, "escalated": True})
+        return [], {eid: final_reason}, {}
 
-        # An escalated weak lead gets no deterministic fallback (#70): the model
-        # either proved a scheme, parked an `other`, or we drop it here.
-        if escalated:
-            if llm_outcome == "parked":
-                continue
-            dets = ", ".join(unverified_dets) or "unknown detectors"
-            if llm_outcome == "rejected":
-                final_reason = f"unverified: {dets} (model: {llm_reason or 'no narrative'})"
-                rec.emit("decision", eid, {"action": "drop_lead", "reason": final_reason, "escalated": True})
-                dropped[eid] = final_reason
-            elif llm_outcome == "dropped":
-                # the drop_lead decision was already emitted with the model reason
-                dropped[eid] = llm_reason
-            else:
-                # no_terminal / max_steps: no terminal decision was emitted yet
-                final_reason = llm_reason or f"unverified: {dets}"
-                rec.emit("decision", eid, {"action": "drop_lead", "reason": final_reason, "escalated": True})
-                dropped[eid] = final_reason
-            continue
+    # A signature unit whose LLM path ended without an accepted finding gets the
+    # deterministic finding, so LLM and --no-llm agree on the four known schemes.
+    # The model's own terminal decision (drop_lead) and its reasons are preserved in
+    # the log; the fallback is labelled as such.
+    rule_id = SCHEME_TO_RULE.get(hint)
+    if rule_id is not None:
+        scheme_type = hint
+        finding = _build_finding(unit, ds, scheme_type, rule_id)
+        if finding is None:
+            reason = "the aggregated scheme finding was rejected by the evidence guard"
+            rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "llm_reason": llm_reason})
+            return [], {eid: reason}, {}
+        rec.emit(
+            "decision",
+            eid,
+            {
+                "action": "record_finding",
+                "finding": _llm_finding_payload(finding),
+                "source": "deterministic_fallback",
+                "llm_outcome": llm_outcome,
+                "llm_reason": llm_reason,
+            },
+        )
+        rec.emit(
+            "guard",
+            eid,
+            {"accepted": True, "reasons": [], "finding": _llm_finding_payload(finding), "source": "deterministic_fallback"},
+        )
+        return [finding], {}, {}
 
-        # A signature unit whose LLM path ended without an accepted finding gets
-        # the deterministic finding, so LLM and --no-llm agree on the four known
-        # schemes. The model's own terminal decision (drop_lead) and its reasons
-        # are preserved in the log; the fallback is labelled as such.
-        rule_id = SCHEME_TO_RULE.get(hint)
-        if rule_id is not None:
-            scheme_type = hint
-            finding = _build_finding(unit, ds, scheme_type, rule_id)
-            if finding is None:
-                reason = "the aggregated scheme finding was rejected by the evidence guard"
-                rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "llm_reason": llm_reason})
-                dropped[eid] = reason
-                continue
-            rec.emit(
-                "decision",
-                eid,
-                {
-                    "action": "record_finding",
-                    "finding": _llm_finding_payload(finding),
-                    "source": "deterministic_fallback",
-                    "llm_outcome": llm_outcome,
-                    "llm_reason": llm_reason,
-                },
-            )
-            rec.emit(
-                "guard",
-                eid,
-                {"accepted": True, "reasons": [], "finding": _llm_finding_payload(finding), "source": "deterministic_fallback"},
-            )
-            findings.append(finding)
-            continue
-
-        # Unreachable for signature hints (all four map to a rule); kept as a
-        # safe drop for a hint that is not in SCHEME_TO_RULE.
-        reason, verified, _dets = _drop_reason(unit["members"][0], ds)
-        rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
-        dropped[eid] = reason
-    return findings, dropped, parked
+    # Unreachable for signature hints (all four map to a rule); kept as a safe drop
+    # for a hint that is not in SCHEME_TO_RULE.
+    reason, verified, _dets = _drop_reason(unit["members"][0], ds)
+    rec.emit("decision", eid, {"action": "drop_lead", "reason": reason, "verified": verified})
+    return [], {eid: reason}, {}
 
 
 # --- entry points -----------------------------------------------------------
@@ -920,6 +977,7 @@ def run(
     max_leads: int = 12,
     max_steps: int = 12,
     max_escalations: int = 4,
+    workers: int = 1,
     llm: Any = None,
     submission: str | None = None,
     report: str | None = None,
@@ -952,12 +1010,12 @@ def run(
         rec.emit(
             "run_start",
             "",
-            {"dataset": str(dataset_dir), "n_leads": len(dossiers), "mode": mode, "model": model},
+            {"dataset": str(dataset_dir), "n_leads": len(dossiers), "mode": mode, "model": model, "workers": workers},
         )
         t0 = time.time()
 
         if use_llm and effective_llm is not None:
-            findings, dropped, parked = _llm_loop(ds, units, effective_llm, rec, max_leads, max_steps, max_escalations)
+            findings, dropped, parked = _llm_loop(ds, units, effective_llm, rec, max_leads, max_steps, max_escalations, workers)
         else:
             findings, dropped, parked = _fallback_loop(ds, units, rec, max_leads)
 
@@ -1168,6 +1226,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-steps", type=int, default=12)
     parser.add_argument("--max-escalations", type=int, default=4,
                         help="how many weak leads (no scheme signature) the model may investigate (#70)")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="investigate units concurrently (#71); workers=1 is byte-identical to sequential")
     parser.add_argument("--no-llm", action="store_true")
     parser.add_argument(
         "--submission",
@@ -1206,6 +1266,7 @@ def main(argv: list[str] | None = None) -> int:
             max_leads=args.max_leads,
             max_steps=args.max_steps,
             max_escalations=args.max_escalations,
+            workers=args.workers,
             submission=args.submission,
             report=args.report,
             seed=args.seed,
