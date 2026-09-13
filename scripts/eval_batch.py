@@ -127,6 +127,10 @@ def _row(seed: int, schemes: list[str]) -> dict:
         "evidence_validity": 0.0,
         "not_pursued": 0,
         "contract_errors": 0,
+        "llm_calls": 0,
+        "cached_calls": 0,
+        "tokens": 0,
+        "mxn_cost": 0.0,
         "wall_s": 0.0,
         "error": "",
     }
@@ -186,6 +190,13 @@ def run_batch(
             row["evidence_validity"] = float(res["evidence_validity"])
             row["not_pursued"] = int(res["not_pursued_listed"])
             row["contract_errors"] = len(validate_case_file(case, load_ds(dataset_dir)))
+            # #89 writes run_metadata into the case file; these are the three
+            # numbers the judges ask every team for (calls, cost, wall clock).
+            meta = case.get("run_metadata", {}) or {}
+            row["llm_calls"] = int(meta.get("llm_calls", 0) or 0)
+            row["cached_calls"] = int(meta.get("cached_calls", 0) or 0)
+            row["tokens"] = int(meta.get("prompt_tokens", 0) or 0) + int(meta.get("completion_tokens", 0) or 0)
+            row["mxn_cost"] = float(meta.get("mxn_cost", 0.0) or 0.0)
         except Exception as exc:  # noqa: BLE001 - batch must always finish
             row["error"] = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
@@ -204,6 +215,16 @@ def run_batch(
 
     recall_vals = [r["recall"] for r in rows]
     ev_vals = [r["evidence_validity"] for r in rows]
+    # Seeds generated with an empty scheme list are honest books: there is nothing
+    # to recall and no evidence to validate, so score.py reports recall 1.0
+    # (vacuously, n == 0) and evidence_validity 0.0 (ev_total == 0). Averaging those
+    # in flatters recall and understates evidence validity, so the headline numbers
+    # are computed over the seeds that actually had a scheme planted, and the clean
+    # seeds are reported separately as the "nothing to find" control.
+    scheme_rows = [r for r in rows if r["schemes"]]
+    clean_rows = [r for r in rows if not r["schemes"]]
+    s_recall = [r["recall"] for r in scheme_rows]
+    s_ev = [r["evidence_validity"] for r in scheme_rows]
     summary = {
         "seeds": [r["seed"] for r in rows],
         "mode": mode_label,
@@ -215,6 +236,14 @@ def run_batch(
         "mean_evidence_validity": sum(ev_vals) / len(ev_vals) if ev_vals else 0.0,
         "wall_p50_s": statistics.median(wall_times) if wall_times else 0.0,
         "wall_p95_s": _p95(wall_times),
+        "seeds_with_schemes": [r["seed"] for r in scheme_rows],
+        "clean_seeds": [r["seed"] for r in clean_rows],
+        "mean_recall_scheme_seeds": sum(s_recall) / len(s_recall) if s_recall else 0.0,
+        "min_recall_scheme_seeds": min(s_recall) if s_recall else 0.0,
+        "mean_evidence_validity_scheme_seeds": sum(s_ev) / len(s_ev) if s_ev else 0.0,
+        "total_llm_calls": sum(r["llm_calls"] for r in rows),
+        "total_mxn_cost": round(sum(r["mxn_cost"] for r in rows), 4),
+        "mxn_per_seed": round(sum(r["mxn_cost"] for r in rows) / len(rows), 4) if rows else 0.0,
         "n_errors": len([r for r in rows if r["error"]]),
     }
     return rows, summary
@@ -232,6 +261,8 @@ _COLUMNS = [
     "evidence_validity",
     "not_pursued",
     "contract_errors",
+    "llm_calls",
+    "mxn_cost",
     "wall_s",
     "error",
 ]
@@ -244,6 +275,8 @@ def _cell(key: str, value) -> str:
         return f"{float(value):.3f}" if isinstance(value, (int, float)) else str(value)
     if key == "wall_s":
         return f"{float(value):.2f}" if isinstance(value, (int, float)) else str(value)
+    if key == "mxn_cost":
+        return f"{float(value):.4f}" if isinstance(value, (int, float)) else str(value)
     return str(value)
 
 
@@ -259,13 +292,27 @@ def to_markdown(rows: list[dict], summary: dict, argv: list[str]) -> str:
     lines.append("## Summary")
     lines.append(f"- seeds: {summary['seeds']}")
     lines.append(f"- mode: {summary['mode']}")
-    lines.append(f"- mean_recall: {summary['mean_recall']:.3f}")
-    lines.append(f"- min_recall: {summary['min_recall']:.3f}")
+    lines.append(f"- seeds_with_schemes: {summary.get('seeds_with_schemes', [])}")
+    lines.append(f"- clean_seeds (nothing to find): {summary.get('clean_seeds', [])}")
+    lines.append(f"- **mean_recall (scheme seeds): {summary.get('mean_recall_scheme_seeds', 0.0):.3f}**")
+    lines.append(f"- min_recall (scheme seeds): {summary.get('min_recall_scheme_seeds', 0.0):.3f}")
+    lines.append(
+        "- **mean_evidence_validity (scheme seeds): "
+        f"{summary.get('mean_evidence_validity_scheme_seeds', 0.0):.3f}**"
+    )
+    lines.append(f"- mean_recall (all seeds, clean counted as 1.0): {summary['mean_recall']:.3f}")
+    lines.append(f"- min_recall (all seeds): {summary['min_recall']:.3f}")
     lines.append(f"- seeds_with_penalty: {summary['seeds_with_penalty']}")
     lines.append(f"- clean_seeds_with_findings: {summary['clean_seeds_with_findings']}")
-    lines.append(f"- mean_evidence_validity: {summary['mean_evidence_validity']:.3f}")
+    lines.append(
+        "- mean_evidence_validity (all seeds, clean scored 0.0 because there is nothing to validate): "
+        f"{summary['mean_evidence_validity']:.3f}"
+    )
     lines.append(f"- wall_p50_s: {summary['wall_p50_s']:.2f}")
     lines.append(f"- wall_p95_s: {summary['wall_p95_s']:.2f}")
+    lines.append(f"- total_llm_calls: {summary.get('total_llm_calls', 0)}")
+    lines.append(f"- total_mxn_cost: {summary.get('total_mxn_cost', 0.0):.4f}")
+    lines.append(f"- mxn_per_seed: {summary.get('mxn_per_seed', 0.0):.4f}")
     if summary.get("n_errors"):
         lines.append(f"- errors: {summary['n_errors']}")
     lines.append(f"- command: {' '.join(argv)}")
@@ -305,8 +352,11 @@ def main(argv: list[str] | None = None) -> int:
         print(pad(c))
 
     print("\nSummary")
-    for key in ("seeds", "mode", "mean_recall", "min_recall", "seeds_with_penalty",
-                "clean_seeds_with_findings", "mean_evidence_validity", "wall_p50_s", "wall_p95_s"):
+    for key in ("seeds", "mode", "seeds_with_schemes", "clean_seeds",
+                "mean_recall_scheme_seeds", "min_recall_scheme_seeds",
+                "mean_evidence_validity_scheme_seeds", "mean_recall", "min_recall",
+                "seeds_with_penalty", "clean_seeds_with_findings", "mean_evidence_validity",
+                "wall_p50_s", "wall_p95_s", "total_llm_calls", "total_mxn_cost", "mxn_per_seed"):
         print(f"  {key}: {summary[key]}")
     print(f"  command_line: {summary.get('command_line', '')}")
 
@@ -316,8 +366,13 @@ def main(argv: list[str] | None = None) -> int:
         out_path.write_text(to_markdown(rows, summary, sys.argv), encoding="utf-8")
         print(f"\nwrote {out_path}")
 
+    # A batch of only clean books has no recall to measure; the gate for it is
+    # "produced no findings", which the third clause below already checks.
+    recall_gate = bool(summary["seeds_with_schemes"]) and (
+        summary["mean_recall_scheme_seeds"] < args.min_recall
+    )
     gate_fail = (
-        summary["mean_recall"] < args.min_recall
+        recall_gate
         or any(r["penalty"] > args.max_penalty for r in rows)
         or bool(summary["clean_seeds_with_findings"])
     )

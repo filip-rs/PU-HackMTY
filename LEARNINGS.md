@@ -70,6 +70,40 @@ that answers "how do you know?". The check is only as good as the date-filtered 
 judge estate that breaks one of the innocent assumptions now surfaces `unverified:` (and #70 escalates it) instead of
 a false "cleared".
 
+## 2026-09-12 16:45 · Our own evaluation was averaging two incompatible things
+Tried: a first "records it has never seen" table, ten reporting seeds (901–910) the agent had never run,
+random scheme subsets, deterministic path.
+Happened: recall 1.0 and zero penalties on every seed, but mean evidence validity read 0.70 and looked like
+a quality drop. It was not. Three of the ten seeds drew an empty scheme list, and on honest books
+`score.py` reports `evidence_validity = 0.0` because nothing was cited, and `results_recall = 1.0` because
+the denominator is zero. The batch summary averaged those in, understating evidence validity and flattering
+recall at the same time.
+Changed: `scripts/eval_batch.py` now reports the headline over the seeds that actually had fraud planted
+(`mean_recall_scheme_seeds`, `mean_evidence_validity_scheme_seeds`), lists the clean seeds separately as the
+"nothing to find" control, and keeps the all-seed figures for comparability. The pass/fail gate no longer
+applies a recall threshold to a batch with no schemes in it. Honest numbers: 1.000 recall and 1.000 evidence
+validity on the seven scheme seeds, zero findings on all eight honest estates.
+Lesson for the pitch: we nearly put 0.70 on a slide and would have been describing our own scorer's
+convention, not our agent. Any aggregate that mixes "nothing to find" with "something to find" is two
+different measurements wearing one number.
+
+## 2026-09-12 16:45 · The LLM-mode number exists only on a seed we tuned on
+Tried: to run the same ten unseen seeds through the LLM path, which is the headline claim of the project.
+Happened: `.env` on this machine still contains the placeholders from `.env.example`
+(`https://cluster.example`, empty key and model), so `scripts/check_llm.py` exits 1 and every batch fell back
+to the deterministic path. The LLM path *has* been measured (seven runs, GLM-5.3-Flash, entry above), but
+only on company_42 — a tuning seed whose answers are committed in this repo, and whose responses the disk
+cache may be replaying. Under the judges' rule that is not a reportable number. Two documentation errors
+surfaced with it: `docs/PLAN.md` quotes those seven runs as results without saying they are on a tuning seed,
+and `demo/sample_trace.jsonl`, described as "a real LLM run", has `"mode": "no-llm"` in its `run_start` line,
+so the frontend is being built against a trace with no `tool_call` events in it.
+Changed: `docs/eval/README.md` states plainly which path was measured and which was not, and carries the
+exact three commands that produce the LLM tables once the cluster credentials are in `.env`. The
+`llm_calls` / `mxn_cost` / `wall_s` columns are wired and read `run_metadata` from the case file, so the
+cost numbers appear the moment a real call happens.
+Lesson: an unmeasured claim in a plan document becomes a false claim on stage. Better to carry a blank with
+the command that fills it than a number nobody can reproduce.
+
 ## 2026-09-13 02:05 · An `other` finding is parked, never accused
 Tried: #70 — escalate unverified weak leads to the model (up to `--max-escalations`, default 4) so a scheme we did
 not plan for can still be found, and turn an accepted `other` finding into a "suspicious, unproven" `not_pursued`
