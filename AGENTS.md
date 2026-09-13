@@ -9,7 +9,9 @@ suppliers it cannot back with a rule broken, a peso amount, and record IDs. See 
 - `data_estate/` — synthetic company generator, validator, scorer (stdlib only). Owner: Codex. Read data_estate/README.md first.
 - `data_estate/out/company_42/` — FROZEN demo dataset. Never regenerate, never edit. `tests/test_frozen_dataset.py` enforces this.
 - `data_estate/out/estate_42/` — FROZEN judge-shaped export of seed 42 (`estate.db` + `csv/`), once #80 lands. Same rule, same test.
-- `scripts/judges/` — the judges' `validate_format.py`, vendored verbatim (#88). `agent/submit.py` writes the judges' `submission.json` (#88); `agent/challenge.py` is the adversarial review (#91).
+- `scripts/judges/` — the judges' pack, vendored verbatim (#88, #122): `estate_schema.sql`, `submission_schema.json`,
+  `ground_truth_schema.json`, `case_file_structure.md`, `results_table_template.csv`, `validate_format.py`, the two READMEs.
+  Never edit them. `tests/test_judges_spec_conformance.py` holds our code to these files, not to copies typed into Python. `agent/submit.py` writes the judges' `submission.json` (#88); `agent/challenge.py` is the adversarial review (#91).
 - `agent/` — the investigation agent: loader, detectors, tools, loop, evidence guard, case-file writer. Owner: Claude Code.
   `agent/detectors/` holds one module per detector (`<name>.py` → `detect_<name>(ds)`), auto-registered by its `__init__.py`; never edit another detector's module.
 - `tests/conftest.py` — fixtures `ds` (company_42 loaded), `truth`, `scheme(type)`, `decoy_ids`. Tests may read `hidden/`; `agent/` may not.

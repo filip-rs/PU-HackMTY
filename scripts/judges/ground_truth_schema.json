@@ -1,0 +1,70 @@
+{
+  "_about": "The format of an evaluation answer key. Judges hold their own; you need your own to measure yourself against held-out seeds. This file defines the shape so your evaluation harness and the judges' agree.",
+  "_isolation_requirement": "Ground truth must be written to a separate file that your agent's tools can never open. It may be referenced ONLY from your evaluation harness - never from the agent, its tools, or anything they import. Judges may run: grep -r 'ground_truth' your_project/src/ --include='*.py'",
+
+  "ground_truth": {
+    "type": "object",
+    "required": ["seed", "schemes", "decoys", "company_rfc"],
+    "properties": {
+      "seed":        {"type": "integer"},
+      "company_rfc": {"type": "string"},
+
+      "schemes": {
+        "type": "array",
+        "description": "The fraud planted in this estate. One entry per scheme.",
+        "items": {
+          "type": "object",
+          "required": ["scheme_id", "type", "entities", "peso_amount", "difficulty"],
+          "properties": {
+            "scheme_id":            {"type": "string", "description": "e.g. 'S1_phantom_vendor_1'"},
+            "type":                 {"type": "string", "enum": ["phantom_vendor", "kickback", "round_tripping", "threshold_splitting", "revenue_inflation"]},
+            "entities":             {"type": "array", "items": {"type": "string"}, "description": "Prefixed ids, e.g. ['RFC:AAAA010101AA1', 'EMP:0001']"},
+            "supporting_invoices":  {"type": "array", "items": {"type": "string"}},
+            "supporting_txns":      {"type": "array", "items": {"type": "string"}},
+            "peso_amount":          {"type": "number"},
+            "difficulty":           {"type": "string", "enum": ["easy", "medium", "hard"]}
+          }
+        }
+      },
+
+      "decoys": {
+        "type": "array",
+        "description": "Honest entities that trip a detector and check out on inspection. Accusing one is a false accusation.",
+        "items": {
+          "type": "object",
+          "required": ["entity", "signal", "why_innocent"],
+          "properties": {
+            "entity":       {"type": "string"},
+            "signal":       {"type": "string", "description": "Which detector fires on this entity."},
+            "why_innocent": {"type": "string", "description": "The documentary explanation that clears them."},
+            "invoices":     {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  },
+
+  "_illustrative_shape_only": {
+    "seed": 1,
+    "company_rfc": "EMP920101AB1",
+    "schemes": [
+      {
+        "scheme_id": "S1_example_1",
+        "type": "phantom_vendor",
+        "entities": ["RFC:AAAA010101AA1"],
+        "supporting_invoices": ["INV-00001", "INV-00002"],
+        "supporting_txns": ["BNK-00001", "BNK-00002"],
+        "peso_amount": 139200.0,
+        "difficulty": "easy"
+      }
+    ],
+    "decoys": [
+      {
+        "entity": "RFC:BBBB020202BB2",
+        "signal": "example_detector_name",
+        "why_innocent": "One sentence naming the document or fact that clears this entity.",
+        "invoices": ["INV-00002"]
+      }
+    ]
+  }
+}
