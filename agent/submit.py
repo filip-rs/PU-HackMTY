@@ -503,8 +503,12 @@ def _confidence(scheme: str, exhibits: list[dict], ds: Dataset, finding: dict) -
 
     A minimal reading of #87: a phantom vendor is proven by the 69-B listing, a kickback by
     the onward transfer to the employee's own account, a round trip by money leaving and
-    coming back. Everything else is probable — a real tier, not a decoration.
+    coming back. Everything else is probable — a real tier, not a decoration. #91: if the
+    adversarial review weakened the finding, that tier is authoritative — a downgrade is
+    never reversed into an upgrade.
     """
+    if finding.get("challenge", {}).get("confidence") == "probable":
+        return "probable"
     tables = {ex["source_table"] for ex in exhibits}
     if "invoices" not in tables:
         return "probable"
@@ -584,7 +588,9 @@ def _leads_not_pursued(case: dict, ds: Dataset, log: list[dict], moved: list[dic
                 "signal": ", ".join(detectors) or "aggregated detector sweep",
                 "reason": str(lead.get("reason", "")) or "no corroborating scheme signature matched",
                 "tool_calls_made": list(slot.get("tools", [])),
-                "closed_by": slot.get("closed_by") or "investigator",
+                # #91: the case file is authoritative for who closed the lead (a
+                # challenger-killed finding must not read as closed by the investigator).
+                "closed_by": lead.get("closed_by") or slot.get("closed_by") or "investigator",
             }
         )
     out.extend(moved)
@@ -647,6 +653,9 @@ def build_submission(case: dict, ds: Dataset, log: list[dict] | None = None, met
                 "confidence": _confidence(scheme, exhibits, ds, finding),
                 "money_trail": _money_trail(exhibits, ds),
                 "exhibits": exhibits,
+                # #91: what the adversarial review argued, and why the finding held
+                # (or was weakened/killed). Extra keys are allowed by the judges' checker.
+                "challenge": finding.get("challenge"),
             }
         )
 

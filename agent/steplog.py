@@ -25,6 +25,7 @@ KINDS: tuple[str, ...] = (
     "tool_result",
     "decision",
     "guard",
+    "challenge",
     "run_end",
 )
 
@@ -70,6 +71,7 @@ REQUIRED_PAYLOAD: dict[str, dict[str, type | tuple[type, ...]]] = {
     "tool_result": {"name": str, "n_rows": int, "summary": str, "ids": list, "rows": list},
     "decision": {"action": str},
     "guard": {"accepted": bool, "reasons": list, "finding": dict},
+    "challenge": {"scheme_type": str, "verdict": str, "arguments": list},
     "run_end": {
         "n_findings": int,
         "n_not_pursued": int,
