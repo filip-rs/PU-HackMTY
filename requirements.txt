@@ -1,4 +1,0 @@
-pandas
-pytest
-ruff
-openai>=1.40
