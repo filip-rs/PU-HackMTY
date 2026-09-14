@@ -2,8 +2,11 @@ PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python)
 SEED ?= 7
 override SEED := $(value SEED)
 export SEED
+SCHEMES ?= all
+override SCHEMES := $(value SCHEMES)
+export SCHEMES
 
-.PHONY: test lint gen score
+.PHONY: test lint gen score demo
 
 lint:
 	$(PYTHON) -m ruff check .
@@ -23,3 +26,6 @@ gen:
 
 score:
 	$(PYTHON) -m data_estate.score data_estate/out/company_42 data_estate/out/example_case_file_for_seed42.json
+
+demo:
+	$(PYTHON) scripts/demo_run.py --seed "$$SEED" --schemes "$$SCHEMES" --serve
